@@ -1,12 +1,11 @@
 import numpy as np
 import pandas as pd
-# import streamlit as st
 import yfinance as yf
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.graph_objects as go
 import mplfinance as mpf
-from datetime import timedelta
+from datetime import datetime, timedelta
 from itertools import combinations
 from joblib import Parallel, delayed
 import statsmodels.api as sm
@@ -14,6 +13,7 @@ from statsmodels.stats.stattools import jarque_bera
 from statsmodels.stats.diagnostic import acorr_ljungbox, het_arch
 from scipy.stats import skew, jarque_bera, shapiro, ttest_1samp
 from arch import arch_model
+import math
 from sklearn.model_selection import ParameterGrid
 
 def import_data(index, start_date, end_date):
@@ -29,18 +29,34 @@ def import_data(index, start_date, end_date):
         pandas.DataFrame: Un DataFrame contenant les données boursières, avec les colonnes Date, Open, High, Low, Close, Volume et Ticker.
         Le DataFrame est indexé par la colonne Date.
     """
-    index  = index
-    start = start_date
-    end = end_date
-
-    df = yf.download(index, start=start, end=end, progress=False)
-    df = df.stack(level=1).reset_index()
-    df.rename(columns={"level_1": "Ticker"}, inplace=True)
-
-    df['Date'] = pd.to_datetime(df['Date'])
-    df.set_index('Date', inplace=True)
+    if isinstance(index, str):
+        index = [index]  # Si un seul indice est fourni, le convertir en liste pour un traitement uniforme
     
-    return df
+    valid_indexes = []  # Liste des indices valides avec des données disponibles
+    df_list = []  # Liste pour stocker les DataFrames des indices valides
+
+    for ticker in index:
+        # Téléchargement des données pour chaque ticker
+        df = yf.download(ticker, start=start_date, end=end_date, progress=False)
+        
+        if df.empty:  # Vérification si le DataFrame est vide (aucune donnée disponible)
+            print(f"Aucune donnée disponible pour {ticker} entre {start_date} et {end_date}. Il sera retiré de l'analyse.")
+        else:
+            df = df.stack(level=1).reset_index()
+            df.rename(columns={"level_1": "Ticker"}, inplace=True)
+
+            df['Date'] = pd.to_datetime(df['Date'])
+            df.set_index('Date', inplace=True)
+            
+            valid_indexes.append(ticker)  # Ajouter l'indice à la liste des indices valides
+            df_list.append(df)  # Ajouter le DataFrame à la liste des DataFrames valides
+    
+    if df_list:
+        # Concatenation des DataFrames valides en un seul DataFrame
+        final_df = pd.concat(df_list, axis=0)
+        return final_df
+    else:
+        return None
 
 def interpolate(df, start_date, end_date):
     """
@@ -130,7 +146,7 @@ def ARCH_search(data, p_max, q_max, o=0, vol='GARCH', mean='Constant', dist='nor
         tuple: Un tuple contenant les meilleurs ordres p et q du modèle GARCH sélectionné en fonction du critère.
     """
     p_range = range(1, p_max + 1) if vol != 'FIGARCH' else [0, 1]
-    q_range = range(0, q_max + 1) if vol != 'FIGARCH' else [0, 1]
+    q_range = range(1, q_max + 1) if vol != 'FIGARCH' else [0, 1]
     param_grid = {'p': p_range, 'q': q_range}
     grid = ParameterGrid(param_grid)
 
@@ -193,7 +209,6 @@ def model_validation(resid):
     df_results = pd.DataFrame(results)
     return df_results
 
-
 def distribution(resid):
     """
     Calcule la kurtosis et la skewness (asymétrie) d'une série de résidus pour évaluer la forme de la distribution.
@@ -211,11 +226,30 @@ def distribution(resid):
     return kurt, skewness
 
 def forecast_volatility(i, real_values, test_size, vol, p, q, mean, dist):
-        current_train = real_values[:-(test_size - i)]
-        model = arch_model(current_train, vol=vol, p=p, q=q, mean=mean, dist=dist)
-        model_fit = model.fit(disp='off', options={'maxiter': 750})
-        pred = model_fit.forecast(horizon=1)
-        return np.sqrt(pred.variance.values[-1, :][0])
+    """
+    Prédit la volatilité pour une période donnée à l'aide d'un modèle GARCH.
+
+    Cette fonction ajuste un modèle GARCH sur les données d'entraînement jusqu'à l'indice spécifié par `i`,
+    et prédit la volatilité pour la période suivante en utilisant le modèle ajusté.
+
+    Args:
+        i (int): L'indice de l'instant actuel pour lequel la prévision est effectuée.
+        real_values (array-like): Les données historiques de séries temporelles utilisées pour ajuster le modèle.
+        test_size (int): Le nombre de points de données réservés pour les tests.
+        vol (str): Le modèle de volatilité à utiliser (par exemple, 'Garch' ou 'EGarch').
+        p (int): L'ordre du modèle GARCH pour le retard des rendements carrés passés.
+        q (int): L'ordre du modèle GARCH pour le retard de la volatilité conditionnelle passée.
+        mean (str): Le modèle de moyenne à utiliser (par exemple, 'Constant', 'Zero', etc.).
+        dist (str): La distribution des erreurs du modèle (par exemple, 'Normal', 't', etc.).
+
+    Returns:
+        float: La volatilité prévisionnelle pour la période suivante, sous forme de racine carrée de la variance prédit.
+    """
+    current_train = real_values[:-(test_size - i)]
+    model = arch_model(current_train, vol=vol, p=p, q=q, mean=mean, dist=dist)
+    model_fit = model.fit(disp='off', options={'maxiter': 750})
+    pred = model_fit.forecast(horizon=1)
+    return np.sqrt(pred.variance.values[-1, :][0])
 
 def rolling_pred(real_values, train, test_size, vol, p, q, mean, dist, col):
     """
@@ -252,7 +286,7 @@ def rolling_pred(real_values, train, test_size, vol, p, q, mean, dist, col):
     plt.figure(figsize=(9, 5))
     plt.plot(true.index, true, label=f'Rendement réel')
     plt.plot(true.index, preds, label='Volatilité prédite', linestyle='dashed')
-    plt.title(f'\nVolatilité prédite pour {col} avec la prévision glissante\n', fontsize=15)
+    plt.title(f'\nPrévision glissante de la volatilité des actions {col}\n', fontsize=15)
     plt.legend(fontsize=12)
     plt.ylabel('Volatilité et rendements (en %)')
     plt.xticks(rotation=45)
@@ -292,42 +326,6 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, col, horizon):
     plt.grid(True)
     plt.tight_layout()
     plt.show()
-
-def select_volatility_model(df_results, kurt, skewness):
-    """
-    Sélectionne le modèle de volatilité à utiliser basé sur les résultats des tests de validation
-    et les caractéristiques des résidus.
-
-    Args:
-        df_results (pd.DataFrame): Résultats des tests de validation du modèle (hypothèses validées ou non).
-        kurt (float): Kurtosis des résidus.
-        skewness (float): Skewness (asymétrie) des résidus.
-
-    Returns:
-        str: Le modèle de volatilité à utiliser ('GARCH', 'EGARCH', 'GJR-GARCH', 'APARCH').
-    """
-    # Vérification des hypothèses de validation
-    if all(df_val['Respect']==1):
-        # Si toutes les hypothèses sont respectées (résidus normaux, pas d'autocorrélation ni d'effet ARCH)
-        model = 'GARCH'
-        
-    # Si des autocorrélations sont significatives à long terme
-    if df_results.loc[df_results['Hypothèse'] == 'Autocorrélation des résidus au carré', 'Respect'].values[0] == 0 and df_results.loc[df_results['Hypothèse'] == 'Autocorrélation des résidus', 'Respect'].values[0] == 0:
-        model = 'FIGARCH'
-    
-    if df_results.loc[df_results['Hypothèse'] == 'Autocorrélation des résidus au carré', 'Respect'].values[0] == 0 or df_results.loc[df_results['Hypothèse'] == 'Autocorrélation des résidus', 'Respect'].values[0] == 0:
-        model = 'HGARCH'
-    
-    # Si les résidus montrent une asymétrie et une kurtosis élevée (indiquant des queues épaisses)
-    diff_kurt = abs(kurt-3)
-    if diff_kurt >= 0.4 and (abs(skewness) >= 0.5):
-        model = 'APARCH'
-
-    else:
-        model = 'EGARCH'
-    
-    # Autres situations : EGARCH
-    return model
 
 def mean_dist(hyp_df, data, kurtosis, skewness):
     """
@@ -373,15 +371,16 @@ def mean_dist(hyp_df, data, kurtosis, skewness):
 
     # Détermination de la distribution
     diff_kurt = abs(kurtosis-3)
-    if diff_kurt >= 0.4 and abs(skewness) >= 0.4:
-        dist='ged'
-    elif diff_kurt >= 0.4 and abs(skewness) < 0.4:
-        dist = 't'
-    elif diff_kurt < 0.4 and abs(skewness) >= 0.4:
-        dist = 'skewt'
     if hyp_df.loc[hyp_df['Hypothèse'] == 'Normalité des résidus', 'P-Value'].values[0] > 0.01:
         dist='normal'
     else:
-        dist='t'
+        if diff_kurt >= 0.3 and abs(skewness) >= 0.3:
+            dist='ged'
+        elif diff_kurt >= 0.3 and abs(skewness) < 0.3:
+            dist = 't'
+        elif diff_kurt < 0.3 and abs(skewness) >= 0.3:
+            dist = 'skewt'
+        else:
+            dist='t'
 
     return str(mean), str(dist)

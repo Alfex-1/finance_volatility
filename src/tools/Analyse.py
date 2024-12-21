@@ -17,7 +17,7 @@ plt.figure(figsize=(11, 6))
 sns.lineplot(data=df, x="Date", y="Adj Close", hue="Ticker")
 plt.title("\nÉvolution des prix de clôture par entreprise\n", fontsize=16)
 plt.xlabel(None)
-plt.ylabel("Prix de clôture", fontsize=13)
+plt.ylabel("Prix de clôture (en USD)", fontsize=13)
 plt.xticks(rotation=45, fontsize=13)
 plt.yticks(fontsize=13)
 plt.tight_layout()
@@ -45,9 +45,9 @@ plt.figure(figsize=(10, 6))
 for ticker in df['Ticker'].unique():
     ticker_data = df_returns[df_returns['Ticker'] == ticker]
     plt.plot(ticker_data['Date'], ticker_data['Returns'], label=ticker)
-plt.title("\nRendements quotidiens par entreprise\n",fontsize=15)
+plt.title("\nRendements journaliers par entreprise\n",fontsize=15)
 plt.xlabel(None)
-plt.ylabel("Rendements journaliers (%)",fontsize=13)
+plt.ylabel("Rendements journaliers (en %)",fontsize=13)
 plt.legend(title="Entreprises", fontsize=12.5, title_fontsize=14, loc='best')
 plt.xticks(rotation=45, fontsize=13)
 plt.yticks(fontsize=13)
@@ -60,7 +60,7 @@ plt.figure(figsize=(10, 6))
 for ticker in df['Ticker'].unique():
     ticker_data = df_returns[df_returns['Ticker'] == ticker]
     plt.plot(ticker_data['Date'], ticker_data['Cumul_returns'], label=ticker)
-plt.title("\nRendements quotidiens cumulés par entreprise\n",fontsize=15)
+plt.title("\nEvolution des rendements journaliers cumulés par entreprise\n",fontsize=15)
 plt.xlabel(None)
 plt.ylabel("Rendements cumulés journaliers (%)",fontsize=13)
 plt.legend(title="Entreprises", fontsize=12.5, title_fontsize=14, loc='best')
@@ -102,9 +102,9 @@ df_perf_melted = df_perf_melted.sort_values(
 
 plt.figure(figsize=(10, 6))
 ax = sns.barplot(x="Ticker", y="Valeur", hue="Mesure", data=df_perf_melted)
-plt.title("\nPerformance et risque des rendements journaliers par entreprise\n", fontsize=15)
-plt.xlabel("Entreprises", fontsize=13)
-plt.ylabel("Mesures (en %)", fontsize=13)
+plt.title("\nPerformances et risques des actions par entreprise\n", fontsize=15)
+plt.xlabel(None)
+plt.ylabel("Mesures en %", fontsize=13)
 plt.xticks(fontsize=13)
 plt.yticks(fontsize=13)
 plt.legend(title=None, fontsize=13, loc='best')
@@ -152,7 +152,7 @@ for ticker in df['Ticker'].unique():
     )
     # Mettre en forme l'affichage
     fig.update_layout(
-        title=f"Performance journalière des actions {ticker}",
+        title=f"Performances journalières des actions {ticker}",
         xaxis_title="Date",
         yaxis_title="Prix",
         yaxis=dict(title="Prix", side="right"),
@@ -162,8 +162,8 @@ for ticker in df['Ticker'].unique():
             side="left",
             showgrid=False,
         ),
-        xaxis_rangeslider_visible=True,  # Activer la barre de zoom interactive
-        template="plotly_dark",  # Choix de style (modifiable selon vos goûts)
+        xaxis_rangeslider_visible=True,
+        template="plotly_dark",
         height=800,
         width=1200
     )
@@ -180,8 +180,8 @@ if len(tickers) > 1:
 
     # Calcul automatique des dimensions du tableau
     num_pairs = len(ticker_pairs)
-    ncols = 3  # Fixer un nombre raisonnable de colonnes (modifiable si besoin)
-    nrows = int(round(num_pairs / ncols,0))
+    ncols = 3
+    nrows = math.ceil(num_pairs / ncols)
 
     # Créer la figure et les axes
     fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(ncols * 5, nrows * 4))
@@ -206,18 +206,19 @@ if len(tickers) > 1:
     # Désactiver les axes inutilisés si le nombre de paires est inférieur au nombre d'axes
     for idx in range(num_pairs, len(axes)):
         axes[idx].set_visible(False)
+
     fig.suptitle("\nRelation entre les prix de clôture ajustés entre chaque entreprise", fontsize=20)
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.show()
 
     # Créer la matrice de corrélation
-    correlation_matrix = df_pivot.corr(method='spearman')
+    correlation_matrix = df_pivot.corr(method='spearman')*100
 
     # Affichage de la heatmap des corrélations
     plt.figure(figsize=(8, 6))
-    sns.heatmap(correlation_matrix, annot=True, cmap="coolwarm", fmt=".2f")
-    plt.title("Corrélations entre les prix de clôture de chaque entreprises")
-    plt.xlabel("Entreprises")
-    plt.ylabel("Entreprises")
+    sns.heatmap(correlation_matrix, annot=True, cmap="flare", fmt=".2f")
+    plt.title("\nCorrélations entre les prix de clôture de chaque entreprise (en %)\n")
+    plt.xlabel(None)
+    plt.ylabel(None)
     plt.grid(False)
-    plt.show()
+    plt.show() 

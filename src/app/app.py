@@ -147,7 +147,7 @@ def ARCH_search(data, p_max, q_max, o=0, vol='GARCH', mean='Constant', dist='nor
         tuple: Un tuple contenant les meilleurs ordres p et q du modèle GARCH sélectionné en fonction du critère.
     """
     p_range = range(1, p_max + 1) if vol != 'FIGARCH' else [0, 1]
-    q_range = range(0, q_max + 1) if vol != 'FIGARCH' else [0, 1]
+    q_range = range(1, q_max + 1) if vol != 'FIGARCH' else [0, 1]
     param_grid = {'p': p_range, 'q': q_range}
     grid = ParameterGrid(param_grid)
 
@@ -328,43 +328,7 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, col, horizon):
     plt.grid(True)
     plt.tight_layout()
     st.pyplot(plt)
-
-def select_volatility_model(df_results, kurt, skewness):
-    """
-    Sélectionne le modèle de volatilité à utiliser basé sur les résultats des tests de validation
-    et les caractéristiques des résidus.
-
-    Args:
-        df_results (pd.DataFrame): Résultats des tests de validation du modèle (hypothèses validées ou non).
-        kurt (float): Kurtosis des résidus.
-        skewness (float): Skewness (asymétrie) des résidus.
-
-    Returns:
-        str: Le modèle de volatilité à utiliser ('GARCH', 'EGARCH', 'GJR-GARCH', 'APARCH').
-    """
-    # Vérification des hypothèses de validation
-    if all(df_val['Respect']==1):
-        # Si toutes les hypothèses sont respectées (résidus normaux, pas d'autocorrélation ni d'effet ARCH)
-        model = 'GARCH'
-        
-    # Si des autocorrélations sont significatives à long terme
-    if df_results.loc[df_results['Hypothèse'] == 'Autocorrélation des résidus au carré', 'Respect'].values[0] == 0 and df_results.loc[df_results['Hypothèse'] == 'Autocorrélation des résidus', 'Respect'].values[0] == 0:
-        model = 'FIGARCH'
     
-    if df_results.loc[df_results['Hypothèse'] == 'Autocorrélation des résidus au carré', 'Respect'].values[0] == 0 or df_results.loc[df_results['Hypothèse'] == 'Autocorrélation des résidus', 'Respect'].values[0] == 0:
-        model = 'HGARCH'
-    
-    # Si les résidus montrent une asymétrie et une kurtosis élevée (indiquant des queues épaisses)
-    diff_kurt = abs(kurt-3)
-    if diff_kurt >= 0.4 and (abs(skewness) >= 0.5):
-        model = 'APARCH'
-
-    else:
-        model = 'EGARCH'
-    
-    # Autres situations : EGARCH
-    return model
-
 def mean_dist(hyp_df, data, kurtosis, skewness):
     """
     Détermine la spécification de la moyenne et de la distribution d'un modèle basé sur les hypothèses
@@ -646,7 +610,7 @@ if option == "Analyse" and len(selected_companies) >= 1 and start_date and end_d
                 side="left",
                 showgrid=False,
             ),
-            xaxis_rangeslider_visible=True,  # Activer la barre de zoom interactive
+            xaxis_rangeslider_visible=True,
             template="plotly_dark",
             height=800,
             width=1200
@@ -664,8 +628,8 @@ if option == "Analyse" and len(selected_companies) >= 1 and start_date and end_d
 
         # Calcul automatique des dimensions du tableau
         num_pairs = len(ticker_pairs)
-        ncols = 3  # Fixer un nombre raisonnable de colonnes (modifiable si besoin)
-        nrows = math.ceil(num_pairs / ncols)  # Utiliser math.ceil pour avoir assez de lignes
+        ncols = 3
+        nrows = math.ceil(num_pairs / ncols)
 
         # Créer la figure et les axes
         fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(ncols * 5, nrows * 4))
@@ -755,7 +719,7 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
                 mean_t = 'Constant'
 
             # Recherche des meilleurs hyperparamètres
-            p, q = ARCH_search(train, p_max=7, q_max=7, vol='GARCH', mean=mean_t, criterion='aic')
+            p, q = ARCH_search(train, p_max=10, q_max=10, vol='GARCH', mean=mean_t, criterion='aic')
 
             # Construction du meilleur modèle selon le critère d'information
             model = arch_model(train, vol='GARCH', p=p, q=q, mean=mean_t, rescale=False)
@@ -780,7 +744,7 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
                 mean, dist = mean_dist(df_val, train, kurt_val, skewness_val)
 
                 # Recherche des meilleurs hyperparamètres
-                p, q = ARCH_search(train, p_max=7, q_max=7, vol='GARCH', mean=mean, dist=dist, criterion='aic')
+                p, q = ARCH_search(train, p_max=10, q_max=10, vol='GARCH', mean=mean, dist=dist, criterion='aic')
 
                 # Construction du meilleur modèle selon le critère d'information
                 model = arch_model(train, vol='GARCH', p=p, q=q, mean=mean, dist=dist, rescale=False)

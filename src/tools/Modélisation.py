@@ -24,16 +24,16 @@ for ticker in df['Ticker'].unique():
 df  = pd.concat(df_list, ignore_index=True).dropna()
 df_pivot = df.pivot(index="Date", columns="Ticker", values="Returns")
 
-horizon=14
+horizon=7
 
 # Initialisation de la liste pour stocker les résultats
 model_summary = []
+model_val = []
 
 # Choix et validation des modèles
 for col in df_pivot.columns:
     # Division en bases d'apprentissage-validation
-    train_size = int(0.8 * len(df_pivot[col]))
-    train = df_pivot[col].iloc[:train_size]
+    train = df_pivot[col]
     test_size = int(len(df_pivot[col])*0.4)
     
     # Test t pour moyenne nulle
@@ -44,7 +44,7 @@ for col in df_pivot.columns:
         mean_t ='Constant'
     
     # Recherche des meilleurs hyperparamètres
-    p, q = ARCH_search(train, p_max=8, q_max=8, vol='GARCH', mean=mean_t, criterion='aic')
+    p, q = ARCH_search(train, p_max=10, q_max=10, vol='GARCH', mean=mean_t, criterion='aic')
 
     # Construction du meilleur modèle selon le critère d'information
     model = arch_model(train, vol='GARCH', p=p, q=q, mean=mean_t, rescale=False)
@@ -69,27 +69,41 @@ for col in df_pivot.columns:
         mean, dist = mean_dist(df_val, train, kurt_val, skewness_val)
         
         # Recherche des meilleurs hyperparamètres
-        p, q = ARCH_search(train, p_max=8, q_max=8, vol='GARCH', mean=mean, dist=dist, criterion='aic')
+        p, q = ARCH_search(train, p_max=10, q_max=10, vol='GARCH', mean=mean, dist=dist, criterion='aic')
         
         # Construction du meilleur modèle selon le critère d'information
         model = arch_model(train, vol='GARCH', p=p, q=q, mean=mean, dist=dist, rescale=False)
         model = model.fit(disp='off', options={'maxiter': 750})
+        resid = model.resid
+        
+        # Validation
+        df_val = model_validation(resid)
         
         # Prédictions glissantes
-        # rolling_pred(real_values=df_pivot[col], train=train, test_size=test_size, vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col)
+        rolling_pred(real_values=df_pivot[col], train=train, test_size=test_size, vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col)
         forecasting_volatility(data=train, model=model,vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, horizon=horizon)
                 
-    # Ajouter les informations du modèle à la liste
-    model_summary.append({
-        'Entreprise': col,
-        'p': p,
-        'q': q,
-        'Moyenne': mean,
-        'Distribution': dist
-    })
-    
-    end_time = time.time()
+        # Ajouter les informations du modèle à la liste
+        model_summary.append({
+            'Entreprise': col,
+            'Ordre p': p,
+            'Ordre q': q,
+            'Moyenne': mean,
+            "Distribution d'erreur": dist
+        })
+            
+        # Ajouter les informations sur le respect des hypothèses
+        model_val.append({
+            'Entreprise': col,
+            'Normalité des résidus': "Oui" if df_val.loc[df_val['Hypothèse'] == 'Normalité des résidus', 'Respect'].values[0] == 1 else "Non",
+            'Indépendance des résidus': "Oui" if df_val.loc[df_val['Hypothèse'] == 'Autocorrélation des résidus', 'Respect'].values[0] == 1 else "Non",
+            'Indépendance des résidus au carré': "Oui" if df_val.loc[df_val['Hypothèse'] == 'Autocorrélation des résidus au carré', 'Respect'].values[0] == 1 else "Non",
+            'Homoscédasticité conditionnelle': "Oui" if df_val.loc[df_val['Hypothèse'] == 'Effet ARCH', 'Respect'].values[0] == 1 else "Non",
+        })
 
 # Informations des modèles
 model_summary_df = pd.DataFrame(model_summary)
+model_val_df = pd.DataFrame(model_val)
+
 print(model_summary_df)
+print(model_val_df)
