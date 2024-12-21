@@ -167,10 +167,15 @@ def model_validation(model):
     Valide les hypothèses relatives à un modèle GARCH sur les résidus d'une série temporelle.
 
     Args:
-        resid (array-like): Les résidus de la série temporelle à tester. Il s'agit des erreurs résiduelles du modèle de série temporelle ajusté.
+        model (arch.__future__.arch_model.ARCHModel): Le modèle GARCH ajusté à la série temporelle. 
+               Ce modèle doit avoir des résidus et des paramètres accessibles après ajustement.
 
     Returns:
-        pd.DataFrame: Une DataFrame contenant les résultats des tests de validation des hypothèses, y compris les p-values.
+        pd.DataFrame: Une DataFrame contenant les résultats des tests de validation des hypothèses, y compris les p-values et un indicateur de respect des hypothèses. 
+        Les hypothèses testées incluent la normalité des résidus, l'autocorrélation des résidus, l'autocorrélation des résidus au carré, l'effet ARCH et la stationnarité conditionnelle.
+    
+    Notes:
+        - La stationnarité conditionnelle est vérifiée en s'assurant que la somme des coefficients alpha et beta du modèle GARCH est inférieure à 1. Aucune P-Value n'y est donc associée.
     """
     # Création d'un dictionnaire pour stocker les résultats
     results = {
@@ -178,41 +183,41 @@ def model_validation(model):
         'Respect': [],
         'P-Value':[]
     }
-    # Résidus et aparmètres
+    
+    # Résidus et paramètres
     resid = model.resid
-    params = pd.DataFrame(model_fit.params)
+    params = pd.DataFrame(model.params)
     params = params[params.index.str.contains('alpha|beta')]
-    coeff_sum = np.sum(params,axis=0)
     
     # 1. Normalité des résidus (p-value > 0.05)
     _, p_shapiro = shapiro(resid)
     results['Hypothèse'].append('Normalité des résidus')
-    results['Respect'].append(1 if p_shapiro > 0.05 else 0)
+    results['Respect'].append(1 if p_shapiro >= 0.05 else 0)
     results['P-Value'].append(p_shapiro)
     
-    # 2. Autocorrélation des résidus (p-value <= 0.05 pour toutes les lags)
+    # 2. Autocorrélation des résidus (p-value >= 0.05 pour toutes les lags)
     lb_resid = acorr_ljungbox(resid, lags=[i for i in range(1, 13)], return_df=True)
     autocorr_resid_pvalues = lb_resid['lb_pvalue']
     results['Hypothèse'].append('Autocorrélation des résidus')
     results['Respect'].append(1 if all(p >= 0.05 for p in autocorr_resid_pvalues) else 0)
     results['P-Value'].append(autocorr_resid_pvalues.tolist())
     
-    # 3. Autocorrélation des résidus au carré (p-value <= 0.05 pour toutes les lags)
+    # 3. Autocorrélation des résidus au carré (p-value >= 0.05 pour toutes les lags)
     lb_resid_sq = acorr_ljungbox(resid**2, lags=[i for i in range(1, 13)], return_df=True)
     autocorr_resid_sq_pvalues = lb_resid_sq['lb_pvalue']
     results['Hypothèse'].append('Autocorrélation des résidus au carré')
     results['Respect'].append(1 if all(p >= 0.05 for p in autocorr_resid_sq_pvalues) else 0)
     results['P-Value'].append(autocorr_resid_sq_pvalues.tolist())
     
-    # 4. Hétéroscédasticité conditionnelle (effet ARCH), p-value > 0.05
+    # 4. Hétéroscédasticité conditionnelle (effet ARCH), p-value >= 0.05
     lm_test = het_arch(resid)
     results['Hypothèse'].append('Effet ARCH')
-    results['Respect'].append(1 if lm_test[1] > 0.05 else 0)
+    results['Respect'].append(1 if lm_test[1] >= 0.05 else 0)
     results['P-Value'].append(lm_test[1])
     
     # 5. Stationnarité conditionnelle
     results['Hypothèse'].append('Stationnarité conditionnelle')
-    results['Respect'].append(1 if coeff_sum < 1 else 0)
+    results['Respect'].append(1 if float(np.sum(params, axis=0).iloc[0]) < 1 else 0)
     results['P-Value'].append("None")
     
     # Création d'une DataFrame avec les résultats
