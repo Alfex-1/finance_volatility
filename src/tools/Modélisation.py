@@ -16,7 +16,7 @@ df['Ticker'] = df['Ticker'].replace({'AAPL': 'Apple',
 df_list = []
 for ticker in df['Ticker'].unique():
     ticker_data = df[df['Ticker'] == ticker].copy()
-    ticker_data["Returns"] = ticker_data["Adj Close"].pct_change(fill_method=None)*100
+    ticker_data["Returns"] = ticker_data["Close"].pct_change(fill_method=None)*100
     
     df_list.append(ticker_data)
 
@@ -54,7 +54,7 @@ for col in df_pivot.columns:
     resid = model.resid
     
     # Validation
-    df_val = model_validation(resid)
+    df_val = model_validation(model)
     
     # Distribution
     kurt_val, skewness_val = distribution(resid)
@@ -74,10 +74,9 @@ for col in df_pivot.columns:
         # Construction du meilleur modèle selon le critère d'information
         model = arch_model(train, vol='GARCH', p=p, q=q, mean=mean, dist=dist, rescale=False)
         model = model.fit(disp='off', options={'maxiter': 750})
-        resid = model.resid
         
         # Validation
-        df_val = model_validation(resid)
+        df_val = model_validation(model)
         
         # Prédictions glissantes
         rolling_pred(real_values=df_pivot[col], train=train, test_size=test_size, vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col)
@@ -99,6 +98,7 @@ for col in df_pivot.columns:
             'Indépendance des résidus': "Oui" if df_val.loc[df_val['Hypothèse'] == 'Autocorrélation des résidus', 'Respect'].values[0] == 1 else "Non",
             'Indépendance des résidus au carré': "Oui" if df_val.loc[df_val['Hypothèse'] == 'Autocorrélation des résidus au carré', 'Respect'].values[0] == 1 else "Non",
             'Homoscédasticité conditionnelle': "Oui" if df_val.loc[df_val['Hypothèse'] == 'Effet ARCH', 'Respect'].values[0] == 1 else "Non",
+            'Stationnarité conditionnelle': if df_val.loc[df_val['Hypothèse'] == 'Stationnarité conditionnelle', 'Respect'].values[0] == 1 else "Non"
         })
 
 # Informations des modèles

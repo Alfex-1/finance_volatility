@@ -163,15 +163,20 @@ def ARCH_search(data, p_max, q_max, o=0, vol='GARCH', mean='Constant', dist='nor
     
     return p, q
 
-def model_validation(resid):
+def model_validation(model):
     """
     Valide les hypothèses relatives à un modèle GARCH sur les résidus d'une série temporelle.
 
     Args:
-        resid (array-like): Les résidus de la série temporelle à tester. Il s'agit des erreurs résiduelles du modèle de série temporelle ajusté.
+        model (arch.__future__.arch_model.ARCHModel): Le modèle GARCH ajusté à la série temporelle. 
+               Ce modèle doit avoir des résidus et des paramètres accessibles après ajustement.
 
     Returns:
-        pd.DataFrame: Une DataFrame contenant les résultats des tests de validation des hypothèses, y compris les p-values.
+        pd.DataFrame: Une DataFrame contenant les résultats des tests de validation des hypothèses, y compris les p-values et un indicateur de respect des hypothèses. 
+        Les hypothèses testées incluent la normalité des résidus, l'autocorrélation des résidus, l'autocorrélation des résidus au carré, l'effet ARCH et la stationnarité conditionnelle.
+    
+    Notes:
+        - La stationnarité conditionnelle est vérifiée en s'assurant que la somme des coefficients alpha et beta du modèle GARCH est inférieure à 1. Aucune P-Value n'y est donc associée.
     """
     # Création d'un dictionnaire pour stocker les résultats
     results = {
@@ -179,6 +184,12 @@ def model_validation(resid):
         'Respect': [],
         'P-Value':[]
     }
+    
+    # Résidus et paramètres
+    resid = model.resid
+    params = pd.DataFrame(model.params)
+    params = params[params.index.str.contains('alpha|beta')]  # Filtrer les coefficients alpha et beta
+    coeff_sum = np.sum(params, axis=0)  # Calculer la somme des coefficients alpha et beta
     
     # 1. Normalité des résidus (p-value > 0.05)
     _, p_shapiro = shapiro(resid)
@@ -205,6 +216,11 @@ def model_validation(resid):
     results['Hypothèse'].append('Effet ARCH')
     results['Respect'].append(1 if lm_test[1] > 0.05 else 0)
     results['P-Value'].append(lm_test[1])
+    
+    # 5. Stationnarité conditionnelle
+    results['Hypothèse'].append('Stationnarité conditionnelle')
+    results['Respect'].append(1 if coeff_sum < 1 else 0)
+    results['P-Value'].append("None")
     
     # Création d'une DataFrame avec les résultats
     df_results = pd.DataFrame(results)
@@ -729,7 +745,7 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
             resid = model.resid
 
             # Validation
-            df_val = model_validation(resid)
+            df_val = model_validation(model)
 
             # Distribution
             kurt_val, skewness_val = distribution(resid)
@@ -749,10 +765,9 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
                 # Construction du meilleur modèle selon le critère d'information
                 model = arch_model(train, vol='GARCH', p=p, q=q, mean=mean, dist=dist, rescale=False)
                 model = model.fit(disp='off', options={'maxiter': 750})
-                resid = model.resid
-                
+                                
                 # Validation
-                df_val = model_validation(resid)
+                df_val = model_validation(model)
 
                 # Prédictions glissantes
                 rolling_pred(real_values=df_pivot[col], train=train, test_size=test_size, vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col)
@@ -774,6 +789,7 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
                 'Indépendance des résidus': "Oui" if df_val.loc[df_val['Hypothèse'] == 'Autocorrélation des résidus', 'Respect'].values[0] == 1 else "Non",
                 'Indépendance des résidus au carré': "Oui" if df_val.loc[df_val['Hypothèse'] == 'Autocorrélation des résidus au carré', 'Respect'].values[0] == 1 else "Non",
                 'Homoscédasticité conditionnelle': "Oui" if df_val.loc[df_val['Hypothèse'] == 'Effet ARCH', 'Respect'].values[0] == 1 else "Non",
+                'Stationnarité conditionnelle': if df_val.loc[df_val['Hypothèse'] == 'Stationnarité conditionnelle', 'Respect'].values[0] == 1 else "Non"
             })
 
         # Informations des modèles

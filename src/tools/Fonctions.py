@@ -162,7 +162,7 @@ def ARCH_search(data, p_max, q_max, o=0, vol='GARCH', mean='Constant', dist='nor
     
     return p, q
 
-def model_validation(resid):
+def model_validation(model):
     """
     Valide les hypothèses relatives à un modèle GARCH sur les résidus d'une série temporelle.
 
@@ -178,6 +178,11 @@ def model_validation(resid):
         'Respect': [],
         'P-Value':[]
     }
+    # Résidus et aparmètres
+    resid = model.resid
+    params = pd.DataFrame(model_fit.params)
+    params = params[params.index.str.contains('alpha|beta')]
+    coeff_sum = np.sum(params,axis=0)
     
     # 1. Normalité des résidus (p-value > 0.05)
     _, p_shapiro = shapiro(resid)
@@ -204,6 +209,11 @@ def model_validation(resid):
     results['Hypothèse'].append('Effet ARCH')
     results['Respect'].append(1 if lm_test[1] > 0.05 else 0)
     results['P-Value'].append(lm_test[1])
+    
+    # 5. Stationnarité conditionnelle
+    results['Hypothèse'].append('Stationnarité conditionnelle')
+    results['Respect'].append(1 if coeff_sum < 1 else 0)
+    results['P-Value'].append("None")
     
     # Création d'une DataFrame avec les résultats
     df_results = pd.DataFrame(results)
