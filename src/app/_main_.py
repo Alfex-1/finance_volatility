@@ -695,7 +695,7 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
         df_list = []
         for ticker in df['Ticker'].unique():
             ticker_data = df[df['Ticker'] == ticker].copy()
-            ticker_data["Returns"] = ticker_data["Adj Close"].pct_change(fill_method=None)*100
+            ticker_data["Returns"] = ticker_data["Close"].pct_change(fill_method=None)*100
             df_list.append(ticker_data)
 
         # Combiner toutes les DataFrames
