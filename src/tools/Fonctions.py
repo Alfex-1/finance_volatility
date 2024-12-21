@@ -42,7 +42,7 @@ def import_data(index, start_date, end_date):
         if df.empty:  # Vérification si le DataFrame est vide (aucune donnée disponible)
             print(f"Aucune donnée disponible pour {ticker} entre {start_date} et {end_date}. Il sera retiré de l'analyse.")
         else:
-            df = df.stack(level=1).reset_index()
+            df = df.stack(level=1, future_stack=True).reset_index()
             df.rename(columns={"level_1": "Ticker"}, inplace=True)
 
             df['Date'] = pd.to_datetime(df['Date'])

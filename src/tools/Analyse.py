@@ -14,7 +14,7 @@ df['Ticker'] = df['Ticker'].replace({'AAPL': 'Apple',
 
 # Visualisation des prix des actions
 plt.figure(figsize=(11, 6))
-sns.lineplot(data=df, x="Date", y="Adj Close", hue="Ticker")
+sns.lineplot(data=df, x="Date", y="Close", hue="Ticker")
 plt.title("\nÉvolution des prix de clôture par entreprise\n", fontsize=16)
 plt.xlabel(None)
 plt.ylabel("Prix de clôture (en USD)", fontsize=13)
@@ -29,7 +29,7 @@ plt.show()
 df_list = []
 for ticker in df['Ticker'].unique():
     ticker_data = df[df['Ticker'] == ticker].copy()
-    ticker_data["Returns"] = ticker_data["Adj Close"].pct_change(fill_method=None)
+    ticker_data["Returns"] = ticker_data["Close"].pct_change(fill_method=None)
     ticker_data["Cumul_returns"] = (1 + ticker_data["Returns"]).cumprod() - 1
     
     df_list.append(ticker_data)
@@ -207,7 +207,7 @@ if len(tickers) > 1:
     for idx in range(num_pairs, len(axes)):
         axes[idx].set_visible(False)
 
-    fig.suptitle("\nRelation entre les prix de clôture ajustés entre chaque entreprise", fontsize=20)
+    fig.suptitle("\nRelation entre les prix de clôture de chaque entreprise", fontsize=20)
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.show()
 
