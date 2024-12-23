@@ -102,7 +102,7 @@ df_perf_melted = df_perf_melted.sort_values(
 
 plt.figure(figsize=(10, 6))
 ax = sns.barplot(x="Ticker", y="Valeur", hue="Mesure", data=df_perf_melted)
-plt.title("\nPerformances et risques des actions par entreprise\n", fontsize=15)
+plt.title("\nPerformances et risques des actions moyens par entreprise\n", fontsize=15)
 plt.xlabel(None)
 plt.ylabel("Mesures en %", fontsize=13)
 plt.xticks(fontsize=13)
@@ -172,7 +172,7 @@ for ticker in df['Ticker'].unique():
     fig.show()
 
 # Vérification de l'existance de corrélations
-df_pivot = df_returns.pivot(index="Date", columns="Ticker", values="Returns")
+df_pivot = df_returns.pivot(index="Date", columns="Ticker", values="Close")
 tickers = df_pivot.columns
 
 if len(tickers) > 1:
@@ -212,7 +212,7 @@ if len(tickers) > 1:
     plt.show()
 
     # Créer la matrice de corrélation
-    correlation_matrix = df_pivot.corr(method='spearman')*100
+    correlation_matrix = df_pivot.corr(method='pearson')*100
 
     # Affichage de la heatmap des corrélations
     plt.figure(figsize=(8, 6))
