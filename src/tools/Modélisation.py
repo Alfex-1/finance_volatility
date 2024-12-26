@@ -1,5 +1,5 @@
 # Importation
-start_date='2023-01-01'
+start_date='2022-06-01'
 end_date='2024-01-01'
 df = import_data(["AAPL", "MSFT", "GOOG","META"], start_date, end_date)
 
@@ -32,9 +32,10 @@ model_val = []
 
 # Choix et validation des modèles
 for col in df_pivot.columns:
-    # Division en bases d'apprentissage-validation
-    train = df_pivot[col]
-    test_size = int(len(df_pivot[col])*0.4)
+    train_size = int(len(df_pivot[col]) * (2/3))
+    test_size = len(df_pivot[col]) - train_size
+
+    train = df_pivot[col][:train_size]  # Ensemble d'apprentissage
     
     # Test t pour moyenne nulle
     _, p_value_ttest = ttest_1samp(train, popmean=0)
@@ -44,7 +45,7 @@ for col in df_pivot.columns:
         mean_t ='Constant'
     
     # Recherche des meilleurs hyperparamètres
-    p, q = ARCH_search(train, p_max=10, q_max=10, vol='GARCH', mean=mean_t, criterion='aic')
+    p, q, _ = ARCH_search(train, p_max=10, q_max=10, vol='GARCH', mean=mean_t, criterion='aic')
 
     # Construction du meilleur modèle selon le critère d'information
     model = arch_model(train, vol='GARCH', p=p, q=q, mean=mean_t, rescale=False)
@@ -62,25 +63,35 @@ for col in df_pivot.columns:
     if all(df_val['Respect']) == 1:
         dist='normal'
         rolling_pred(real_values=df_pivot[col], train=train, test_size=test_size, vol="GARCH", p=p, q=q, mean=mean_t, dist=dist, col=col)
-        forecasting_volatility(data=train, model=model,vol='GARCH', p=p, q=q, mean=mean_t, dist='normal', col=col, horizon=horizon)
+        forecasting_volatility(data=df_pivot[col], model=model,vol='GARCH', p=p, q=q, mean=mean_t, dist='normal', col=col, horizon=horizon)
         break
     else:
         # Choisir le meilleur modèle selon la violation des hypothèses et la distribution des résidus
         mean, dist = mean_dist(df_val, train, kurt_val, skewness_val)
         
         # Recherche des meilleurs hyperparamètres
-        p, q = ARCH_search(train, p_max=10, q_max=10, vol='GARCH', mean=mean, dist=dist, criterion='aic')
+        if mean == 'AR':
+            p, q, lag = ARCH_search(train, p_max=10, q_max=10, vol='GARCH', mean=mean, dist=dist, criterion='aic')
+            
+            # Construction du meilleur modèle selon le critère d'information
+            model = arch_model(train, vol='GARCH', p=p, q=q, mean=mean, dist=dist, lags=lag,  rescale=False)
         
-        # Construction du meilleur modèle selon le critère d'information
-        model = arch_model(train, vol='GARCH', p=p, q=q, mean=mean, dist=dist, rescale=False)
+        
+        else:
+            lag=None
+            p, q, _ = ARCH_search(train, p_max=10, q_max=10, vol='GARCH', mean=mean, dist=dist, criterion='aic')
+        
+            # Construction du meilleur modèle selon le critère d'information
+            model = arch_model(train, vol='GARCH', p=p, q=q, mean=mean, dist=dist, rescale=False)
+        
         model = model.fit(disp='off', options={'maxiter': 750})
         
         # Validation
         df_val = model_validation(model)
         
         # Prédictions glissantes
-        rolling_pred(real_values=df_pivot[col], train=train, test_size=test_size, vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col)
-        forecasting_volatility(data=train, model=model,vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, horizon=horizon)
+        rolling_pred(real_values=df_pivot[col], train=train, test_size=test_size, vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, lag=lag)
+        forecasting_volatility(data=df_pivot[col], model=model,vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, lag=lag, horizon=horizon)
                 
         # Ajouter les informations du modèle à la liste
         model_summary.append({
@@ -88,7 +99,8 @@ for col in df_pivot.columns:
             'Ordre p': p,
             'Ordre q': q,
             'Moyenne': mean,
-            "Distribution d'erreur": dist
+            "Distribution d'erreur": dist,
+            'Retard' : "None" if mean != 'AR' else lag
         })
             
         # Ajouter les informations sur le respect des hypothèses

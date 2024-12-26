@@ -101,7 +101,7 @@ def interpolate(df, start_date, end_date):
     
     return df
 
-def fit_model(params, data, mean, dist, vol, o, criterion):
+def fit_model(params, data, mean, dist, vol, o, lags, criterion):
     """
     Ajuste un modèle GARCH aux données et retourne le critère d'information spécifié (AIC ou BIC) pour évaluer la qualité de l'ajustement.
 
@@ -118,14 +118,18 @@ def fit_model(params, data, mean, dist, vol, o, criterion):
         dict: Dictionnaire contenant les valeurs des paramètres 'p' et 'q' et le critère spécifié ('AIC' ou 'BIC') du modèle ajusté.
     """
     p, q = params['p'], params['q']
-    model = arch_model(data.dropna(), mean=mean, dist=dist, vol=vol, p=p, q=q, o=o)
+    if mean == 'AR':
+        model = arch_model(data.dropna(), mean=mean, dist=dist, vol=vol, p=p, q=q, o=o, lags=lags)
+    else:
+        model = arch_model(data.dropna(), mean=mean, dist=dist, vol=vol, p=p, q=q, o=o)
+    
     model_fit = model.fit(disp='off', options={'maxiter': 750})
     
     # Retourner uniquement le critère spécifié (AIC ou BIC)
     if criterion == 'aic':
-        return {'p': p, 'q': q, 'AIC': model_fit.aic}
+        return {'p': p, 'q': q, 'lags': lags, 'AIC': model_fit.aic}
     elif criterion == 'bic':
-        return {'p': p, 'q': q, 'BIC': model_fit.bic}
+        return {'p': p, 'q': q, 'lags': lags, 'BIC': model_fit.bic}
 
 
 def ARCH_search(data, p_max, q_max, o=0, vol='GARCH', mean='Constant', dist='normal', criterion='aic'):
@@ -148,11 +152,12 @@ def ARCH_search(data, p_max, q_max, o=0, vol='GARCH', mean='Constant', dist='nor
     """
     p_range = range(1, p_max + 1) if vol != 'FIGARCH' else [0, 1]
     q_range = range(1, q_max + 1) if vol != 'FIGARCH' else [0, 1]
-    param_grid = {'p': p_range, 'q': q_range}
+    lags_range = range(1, 8)
+    param_grid = {'p': p_range, 'q': q_range, 'lags': lags_range}
     grid = ParameterGrid(param_grid)
 
     # Exécution parallèle en fonction du critère choisi
-    results = Parallel(n_jobs=-1)(delayed(fit_model)(params, data, mean, dist, vol, o, criterion) for params in grid)
+    results = Parallel(n_jobs=-1)(delayed(fit_model)(params, data, mean, dist, vol, o, params['lags'], criterion) for params in grid)
     
     # Convertir en DataFrame et trier
     results_df = pd.DataFrame(results)
@@ -160,8 +165,9 @@ def ARCH_search(data, p_max, q_max, o=0, vol='GARCH', mean='Constant', dist='nor
     
     p = int(results_df.head(1).iloc[0].values[0])
     q = int(results_df.head(1).iloc[0].values[1])
+    lag = int(results_df.head(1).iloc[0].values[2])
     
-    return p, q
+    return p, q, lag
 
 def model_validation(model):
     """
@@ -187,6 +193,7 @@ def model_validation(model):
     
     # Résidus et paramètres
     resid = model.resid
+    resid = resid.replace([np.inf, -np.inf], np.nan).dropna()
     params = pd.DataFrame(model.params)
     params = params[params.index.str.contains('alpha|beta')]
     
@@ -237,12 +244,13 @@ def distribution(resid):
         float: La kurtosis de la série des résidus, indiquant l'aplatissement ou l'acuité de la distribution.
         float: La skewness (asymétrie) de la série des résidus, indiquant si la distribution est asymétrique vers la gauche ou la droite.
     """
+    resid = resid.replace([np.inf, -np.inf], np.nan).dropna()
     kurt = resid.kurtosis()
     skewness = resid.skew()
     
     return kurt, skewness
 
-def forecast_volatility(i, real_values, test_size, vol, p, q, mean, dist):
+def forecast_volatility(i, real_values, test_size, vol, p, q, mean, dist, lag):
     """
     Prédit la volatilité pour une période donnée à l'aide d'un modèle GARCH.
 
@@ -263,7 +271,7 @@ def forecast_volatility(i, real_values, test_size, vol, p, q, mean, dist):
         float: La volatilité prévisionnelle pour la période suivante, sous forme de racine carrée de la variance prédit.
     """
     current_train = real_values[:-(test_size - i)]
-    model = arch_model(current_train, vol=vol, p=p, q=q, mean=mean, dist=dist)
+    model = arch_model(current_train, vol=vol, p=p, q=q, mean=mean, dist=dist, lags=lag)
     model_fit = model.fit(disp='off', options={'maxiter': 750})
     pred = model_fit.forecast(horizon=1)
     return np.sqrt(pred.variance.values[-1, :][0])
@@ -311,7 +319,7 @@ def rolling_pred(real_values, train, test_size, vol, p, q, mean, dist, col):
     plt.tight_layout()
     st.pyplot(plt)
 
-def forecasting_volatility(data, model, vol, p, q, mean, dist, col, horizon):
+def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon):
     """
     Prédit la volatilité future d'un actif à l'aide d'un modèle ARCH/GARCH ajusté, en générant des prévisions sur un horizon spécifié.
 
@@ -329,7 +337,7 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, col, horizon):
     Returns:
         None: Affiche un graphique représentant la volatilité prédite pour l'horizon spécifié.
     """
-    model = arch_model(data, vol=vol, p=p, q=q, mean=mean, dist=dist)
+    model = arch_model(data, vol=vol, p=p, q=q, mean=mean, dist=dist, lags=lag)
     model_fit = model.fit(disp='off', options={'maxiter': 750})
     pred = model_fit.forecast(horizon=horizon)
     future_dates = [data.index[-1] + timedelta(days=i) for i in range(1, horizon+1)]
@@ -337,7 +345,7 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, col, horizon):
     
     plt.figure(figsize=(9, 5))
     plt.plot(pred)
-    plt.title(f'\nPrédiction de volatilité des actions {col} pour les {horizon-1} prochains jours\n', fontsize=15)
+    plt.title(f'\nPrédiction de volatilité des actions {col} pour les {horizon} prochains jours\n', fontsize=15)
     plt.ylabel("Volatilité prédite (en %)", fontsize=12)
     plt.xticks(rotation=45)
     plt.grid(True)
@@ -723,8 +731,10 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
 
         # Choix et validation des modèles
         for col in df_pivot.columns:
-            train = df_pivot[col]
-            test_size = int(len(df_pivot[col]) * 0.4)
+            train_size = int(len(df_pivot[col]) * (2/3))
+            test_size = len(df_pivot[col]) - train_size
+
+            train = df_pivot[col][:train_size]  # Ensemble d'apprentissage
 
             # Test t pour moyenne nulle
             _, p_value_ttest = ttest_1samp(train, popmean=0)
@@ -752,34 +762,44 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
             if all(df_val['Respect']) == 1:
                 dist = 'normal'
                 rolling_pred(real_values=df_pivot[col], train=train, test_size=test_size, vol="GARCH", p=p, q=q, mean=mean_t, dist=dist, col=col)
-                forecasting_volatility(data=train, model=model, vol='GARCH', p=p, q=q, mean=mean_t, dist='normal', col=col, horizon=horizon)
+                forecasting_volatility(data=train, model=model,vol='GARCH', p=p, q=q, mean=mean_t, dist='normal', col=col, horizon=horizon)
                 break
             else:
                 # Choisir le meilleur modèle selon la violation des hypothèses et la distribution des résidus
                 mean, dist = mean_dist(df_val, train, kurt_val, skewness_val)
-
+                
                 # Recherche des meilleurs hyperparamètres
-                p, q = ARCH_search(train, p_max=10, q_max=10, vol='GARCH', mean=mean, dist=dist, criterion='aic')
-
-                # Construction du meilleur modèle selon le critère d'information
-                model = arch_model(train, vol='GARCH', p=p, q=q, mean=mean, dist=dist, rescale=False)
+                if mean == 'AR':
+                    p, q, lag = ARCH_search(train, p_max=10, q_max=10, vol='GARCH', mean=mean, dist=dist, criterion='aic')
+                    
+                    # Construction du meilleur modèle selon le critère d'information
+                    model = arch_model(train, vol='GARCH', p=p, q=q, mean=mean, dist=dist, lags=lag,  rescale=False)
+                
+                
+                else:
+                    lag=None
+                    p, q, _ = ARCH_search(train, p_max=10, q_max=10, vol='GARCH', mean=mean, dist=dist, criterion='aic')
+                
+                    # Construction du meilleur modèle selon le critère d'information
+                    model = arch_model(train, vol='GARCH', p=p, q=q, mean=mean, dist=dist, rescale=False)
+                
                 model = model.fit(disp='off', options={'maxiter': 750})
-                                
+                
                 # Validation
                 df_val = model_validation(model)
 
                 # Prédictions glissantes
-                rolling_pred(real_values=df_pivot[col], train=train, test_size=test_size, vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col)
-                forecasting_volatility(data=train, model=model, vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, horizon=horizon)
+                rolling_pred(real_values=df_pivot[col], train=train, test_size=test_size, vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, lag=lag)
+                forecasting_volatility(data=df_pivot[col], model=model,vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, lag=lag, horizon=horizon)
 
             # Ajouter les informations du modèle à la liste
             model_summary.append({
-                'Entreprise': col,
-                'Ordre p': p,
-                'Ordre q': q,
-                'Moyenne': mean,
-                "Distribution d'erreur": dist
-            })
+            'Entreprise': col,
+            'Ordre p': p,
+            'Ordre q': q,
+            'Moyenne': mean,
+            "Distribution d'erreur": dist,
+            'Retard' : "None" if mean != 'AR' else lag})
             
             # Ajouter les informations sur le respect des hypothèses
             model_val.append({

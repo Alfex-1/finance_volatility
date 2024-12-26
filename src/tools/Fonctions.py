@@ -100,7 +100,7 @@ def interpolate(df, start_date, end_date):
     
     return df
 
-def fit_model(params, data, mean, dist, vol, o, criterion):
+def fit_model(params, data, mean, dist, vol, o, lags, criterion):
     """
     Ajuste un modèle GARCH aux données et retourne le critère d'information spécifié (AIC ou BIC) pour évaluer la qualité de l'ajustement.
 
@@ -117,14 +117,18 @@ def fit_model(params, data, mean, dist, vol, o, criterion):
         dict: Dictionnaire contenant les valeurs des paramètres 'p' et 'q' et le critère spécifié ('AIC' ou 'BIC') du modèle ajusté.
     """
     p, q = params['p'], params['q']
-    model = arch_model(data.dropna(), mean=mean, dist=dist, vol=vol, p=p, q=q, o=o)
+    if mean == 'AR':
+        model = arch_model(data.dropna(), mean=mean, dist=dist, vol=vol, p=p, q=q, o=o, lags=lags)
+    else:
+        model = arch_model(data.dropna(), mean=mean, dist=dist, vol=vol, p=p, q=q, o=o)
+    
     model_fit = model.fit(disp='off', options={'maxiter': 750})
     
     # Retourner uniquement le critère spécifié (AIC ou BIC)
     if criterion == 'aic':
-        return {'p': p, 'q': q, 'AIC': model_fit.aic}
+        return {'p': p, 'q': q, 'lags': lags, 'AIC': model_fit.aic}
     elif criterion == 'bic':
-        return {'p': p, 'q': q, 'BIC': model_fit.bic}
+        return {'p': p, 'q': q, 'lags': lags, 'BIC': model_fit.bic}
 
 
 def ARCH_search(data, p_max, q_max, o=0, vol='GARCH', mean='Constant', dist='normal', criterion='aic'):
@@ -147,11 +151,12 @@ def ARCH_search(data, p_max, q_max, o=0, vol='GARCH', mean='Constant', dist='nor
     """
     p_range = range(1, p_max + 1) if vol != 'FIGARCH' else [0, 1]
     q_range = range(1, q_max + 1) if vol != 'FIGARCH' else [0, 1]
-    param_grid = {'p': p_range, 'q': q_range}
+    lags_range = range(1, 8)
+    param_grid = {'p': p_range, 'q': q_range, 'lags': lags_range}
     grid = ParameterGrid(param_grid)
 
     # Exécution parallèle en fonction du critère choisi
-    results = Parallel(n_jobs=-1)(delayed(fit_model)(params, data, mean, dist, vol, o, criterion) for params in grid)
+    results = Parallel(n_jobs=-1)(delayed(fit_model)(params, data, mean, dist, vol, o, params['lags'], criterion) for params in grid)
     
     # Convertir en DataFrame et trier
     results_df = pd.DataFrame(results)
@@ -159,8 +164,9 @@ def ARCH_search(data, p_max, q_max, o=0, vol='GARCH', mean='Constant', dist='nor
     
     p = int(results_df.head(1).iloc[0].values[0])
     q = int(results_df.head(1).iloc[0].values[1])
+    lag = int(results_df.head(1).iloc[0].values[2])
     
-    return p, q
+    return p, q, lag
 
 def model_validation(model):
     """
@@ -186,6 +192,7 @@ def model_validation(model):
     
     # Résidus et paramètres
     resid = model.resid
+    resid = resid.replace([np.inf, -np.inf], np.nan).dropna()
     params = pd.DataFrame(model.params)
     params = params[params.index.str.contains('alpha|beta')]
     
@@ -196,14 +203,14 @@ def model_validation(model):
     results['P-Value'].append(p_shapiro)
     
     # 2. Autocorrélation des résidus (p-value >= 0.05 pour toutes les lags)
-    lb_resid = acorr_ljungbox(resid, lags=[i for i in range(1, 13)], return_df=True)
+    lb_resid = acorr_ljungbox(resid, lags=[i for i in range(1, 8)], return_df=True)
     autocorr_resid_pvalues = lb_resid['lb_pvalue']
     results['Hypothèse'].append('Autocorrélation des résidus')
     results['Respect'].append(1 if all(p >= 0.05 for p in autocorr_resid_pvalues) else 0)
     results['P-Value'].append(autocorr_resid_pvalues.tolist())
     
     # 3. Autocorrélation des résidus au carré (p-value >= 0.05 pour toutes les lags)
-    lb_resid_sq = acorr_ljungbox(resid**2, lags=[i for i in range(1, 13)], return_df=True)
+    lb_resid_sq = acorr_ljungbox(resid**2, lags=[i for i in range(1, 8)], return_df=True)
     autocorr_resid_sq_pvalues = lb_resid_sq['lb_pvalue']
     results['Hypothèse'].append('Autocorrélation des résidus au carré')
     results['Respect'].append(1 if all(p >= 0.05 for p in autocorr_resid_sq_pvalues) else 0)
@@ -235,12 +242,13 @@ def distribution(resid):
         float: La kurtosis de la série des résidus, indiquant l'aplatissement ou l'acuité de la distribution.
         float: La skewness (asymétrie) de la série des résidus, indiquant si la distribution est asymétrique vers la gauche ou la droite.
     """
+    resid = resid.replace([np.inf, -np.inf], np.nan).dropna()
     kurt = resid.kurtosis()
     skewness = resid.skew()
     
     return kurt, skewness
 
-def forecast_volatility(i, real_values, test_size, vol, p, q, mean, dist):
+def forecast_volatility(i, real_values, test_size, vol, p, q, mean, dist, lag):
     """
     Prédit la volatilité pour une période donnée à l'aide d'un modèle GARCH.
 
@@ -261,12 +269,12 @@ def forecast_volatility(i, real_values, test_size, vol, p, q, mean, dist):
         float: La volatilité prévisionnelle pour la période suivante, sous forme de racine carrée de la variance prédit.
     """
     current_train = real_values[:-(test_size - i)]
-    model = arch_model(current_train, vol=vol, p=p, q=q, mean=mean, dist=dist)
+    model = arch_model(current_train, vol=vol, p=p, q=q, mean=mean, dist=dist, lags=lag)
     model_fit = model.fit(disp='off', options={'maxiter': 750})
     pred = model_fit.forecast(horizon=1)
     return np.sqrt(pred.variance.values[-1, :][0])
 
-def rolling_pred(real_values, train, test_size, vol, p, q, mean, dist, col):
+def rolling_pred(real_values, train, test_size, vol, p, q, mean, dist, lag, col):
     """
     Effectue des prévisions glissantes de la volatilité pour une série temporelle donnée 
     à l'aide d'un modèle ARCH/GARCH et affiche les résultats.
@@ -290,7 +298,7 @@ def rolling_pred(real_values, train, test_size, vol, p, q, mean, dist, col):
     """
     rolling_predictions = []
     rolling_predictions = Parallel(n_jobs=-1, verbose=0)(
-        delayed(forecast_volatility)(i, real_values, test_size, vol, p, q, mean, dist) for i in range(test_size)
+        delayed(forecast_volatility)(i, real_values, test_size, vol, p, q, mean, dist, lag) for i in range(test_size)
     )
 
     rolling_predictions_df = pd.Series(rolling_predictions, index=real_values[-test_size:].index)
@@ -309,7 +317,7 @@ def rolling_pred(real_values, train, test_size, vol, p, q, mean, dist, col):
     plt.tight_layout()
     plt.show()
 
-def forecasting_volatility(data, model, vol, p, q, mean, dist, col, horizon):
+def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon):
     """
     Prédit la volatilité future d'un actif à l'aide d'un modèle ARCH/GARCH ajusté, en générant des prévisions sur un horizon spécifié.
 
@@ -327,7 +335,7 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, col, horizon):
     Returns:
         None: Affiche un graphique représentant la volatilité prédite pour l'horizon spécifié.
     """
-    model = arch_model(data, vol=vol, p=p, q=q, mean=mean, dist=dist)
+    model = arch_model(data, vol=vol, p=p, q=q, mean=mean, dist=dist, lags=lag)
     model_fit = model.fit(disp='off', options={'maxiter': 750})
     pred = model_fit.forecast(horizon=horizon)
     future_dates = [data.index[-1] + timedelta(days=i) for i in range(1, horizon+1)]
@@ -335,7 +343,7 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, col, horizon):
     
     plt.figure(figsize=(9, 5))
     plt.plot(pred)
-    plt.title(f'\nPrédiction de volatilité de {col} pour les {horizon} prochains jours\n', fontsize=15)
+    plt.title(f'\nPrédiction de volatilité des actions {col} pour les {horizon} prochains jours\n', fontsize=15)
     plt.ylabel("Volatilité prédite (en %)", fontsize=12)
     plt.xticks(rotation=45)
     plt.grid(True)
