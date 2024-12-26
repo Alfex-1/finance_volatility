@@ -466,10 +466,8 @@ elif option == "Prédiction" and len(selected_companies) >=1:
     
     # Choisir de visualiser les performances sur la base de test
     visu_perf = st.selectbox("Voulez-vous visualiser les performances de chaque modèle par rapport aux données rélles ?", ["Oui", "Non"])
-    if visu_perf == "Oui":
-        st.warning("Attention : l'évaluation de chaque modèle prend du temps") 
-    else :
-        continue
+    st.warning("Attention : l'évaluation de chaque modèle prend du temps")
+    
     # Choisir l'horizon des prédictions
     horizon = st.slider("Choisissez l'horizon des prédictions (en jours)", min_value=2, max_value=15, value=7)    
 
@@ -700,7 +698,7 @@ if option == "Analyse" and len(selected_companies) >= 1 and start_date and end_d
         plt.grid(False)
         st.pyplot(plt) 
 
-elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and df is not None and and visu_perf is not None and launch:
+elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and df is not None and visu_perf is not None and launch:
     gif_list = [
     "https://tenor.com/fr/view/pussy-financial-pussy-stonks-stocks-stonks-up-gif-24960970.gif",
     "https://tenor.com/fr/view/money-cat-gif-25358470.gif",
