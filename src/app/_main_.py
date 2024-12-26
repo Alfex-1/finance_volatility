@@ -431,6 +431,7 @@ selected_companies = st.multiselect("Choisissez les entreprises à analyser",
 
 start_date = None
 end_date = None
+visu_perf=None
 
 if option == "Analyse" and len(selected_companies) >=1:
     # Importation des données
@@ -464,7 +465,6 @@ elif option == "Prédiction" and len(selected_companies) >=1:
     start_date = end_date - pd.Timedelta(days=365 + 31 * 6)
     
     # Choisir de visualiser les performances sur la base de test
-    visu_perf=None
     visu_perf = st.selectbox("Voulez-vous visualiser les performances de chaque modèle par rapport aux données rélles ?", ["Oui", "Non"])
     st.warning("Attention : l'évaluation de chaque modèle prend du temps") if visu_perf == "Oui"
     # Choisir l'horizon des prédictions
