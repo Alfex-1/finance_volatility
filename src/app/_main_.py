@@ -466,7 +466,7 @@ elif option == "Prédiction" and len(selected_companies) >=1:
     
     # Choisir de visualiser les performances sur la base de test
     visu_perf = st.selectbox("Voulez-vous visualiser les performances de chaque modèle par rapport aux données rélles ?", ["Oui", "Non"])
-    st.warning("Attention : l'évaluation de chaque modèle prend du temps") if visu_perf == "Oui"
+    st.warning("Attention : l'évaluation de chaque modèle prend du temps") if visu_perf == "Oui" else continue
     # Choisir l'horizon des prédictions
     horizon = st.slider("Choisissez l'horizon des prédictions (en jours)", min_value=2, max_value=15, value=7)    
 
