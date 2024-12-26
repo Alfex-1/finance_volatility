@@ -744,7 +744,7 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
                 mean_t = 'Constant'
 
             # Recherche des meilleurs hyperparamètres
-            p, q = ARCH_search(train, p_max=10, q_max=10, vol='GARCH', mean=mean_t, criterion='aic')
+            p, q, _ = ARCH_search(train, p_max=10, q_max=10, vol='GARCH', mean=mean_t, criterion='aic')
 
             # Construction du meilleur modèle selon le critère d'information
             model = arch_model(train, vol='GARCH', p=p, q=q, mean=mean_t, rescale=False)
