@@ -276,7 +276,7 @@ def forecast_volatility(i, real_values, test_size, vol, p, q, mean, dist, lag):
     pred = model_fit.forecast(horizon=1)
     return np.sqrt(pred.variance.values[-1, :][0])
 
-def rolling_pred(real_values, train, test_size, vol, p, q, mean, dist, col):
+def rolling_pred(real_values, test_size, vol, p, q, mean, dist, col):
     """
     Effectue des prévisions glissantes de la volatilité pour une série temporelle donnée 
     à l'aide d'un modèle ARCH/GARCH et affiche les résultats.
@@ -712,7 +712,7 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
     gif_url = np.random.choice(gif_list)
     gif_placeholder = st.empty()
 
-    with st.spinner("La recherche du modèle optimal pour chaque entreprise peut durer quelques secondes. Merci de patienter !"):
+    with st.spinner("La recherche du modèle optimal pour chaque entreprise peut durer quelques temps. Merci de patienter !"):
         gif_placeholder.image(gif_url, width=300)
         # Calculer les rendements quotidiens
         df_list = []
@@ -789,7 +789,7 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
                 df_val = model_validation(model)
 
                 # Prédictions glissantes
-                rolling_pred(real_values=df_pivot[col], train=train, test_size=test_size, vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, lag=lag)
+                rolling_pred(real_values=df_pivot[col], test_size=test_size, vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, lag=lag)
                 forecasting_volatility(data=df_pivot[col], model=model,vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, lag=lag, horizon=horizon)
 
             # Ajouter les informations du modèle à la liste

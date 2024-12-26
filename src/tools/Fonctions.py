@@ -274,14 +274,13 @@ def forecast_volatility(i, real_values, test_size, vol, p, q, mean, dist, lag):
     pred = model_fit.forecast(horizon=1)
     return np.sqrt(pred.variance.values[-1, :][0])
 
-def rolling_pred(real_values, train, test_size, vol, p, q, mean, dist, lag, col):
+def rolling_pred(real_values, test_size, vol, p, q, mean, dist, lag, col):
     """
     Effectue des prévisions glissantes de la volatilité pour une série temporelle donnée 
     à l'aide d'un modèle ARCH/GARCH et affiche les résultats.
 
     Args:
         real_values (pd.Series): Série temporelle complète contenant les valeurs réelles.
-        train (pd.Series): Partie d'entraînement de la série temporelle.
         test_size (int): Taille de la période de test pour les prévisions glissantes.
         vol (str): Modèle de volatilité à utiliser ('GARCH', 'ARCH', etc.).
         p (int): Ordre du processus ARCH.

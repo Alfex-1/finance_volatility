@@ -90,7 +90,7 @@ for col in df_pivot.columns:
         df_val = model_validation(model)
         
         # Prédictions glissantes
-        rolling_pred(real_values=df_pivot[col], train=train, test_size=test_size, vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, lag=lag)
+        rolling_pred(real_values=df_pivot[col], test_size=test_size, vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, lag=lag)
         forecasting_volatility(data=df_pivot[col], model=model,vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, lag=lag, horizon=horizon)
                 
         # Ajouter les informations du modèle à la liste
