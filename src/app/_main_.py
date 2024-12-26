@@ -735,14 +735,14 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
             test_size = len(df_pivot[col]) - train_size
 
             train = df_pivot[col][:train_size]  # Ensemble d'apprentissage
-
+            
             # Test t pour moyenne nulle
             _, p_value_ttest = ttest_1samp(train, popmean=0)
             if p_value_ttest >= 0.05:
                 mean_t = 'Zero'
             else:
-                mean_t = 'Constant'
-
+                mean_t ='Constant'
+            
             # Recherche des meilleurs hyperparamètres
             p, q, _ = ARCH_search(train, p_max=10, q_max=10, vol='GARCH', mean=mean_t, criterion='aic')
 
