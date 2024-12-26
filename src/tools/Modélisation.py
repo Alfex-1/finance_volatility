@@ -76,7 +76,6 @@ for col in df_pivot.columns:
             # Construction du meilleur modèle selon le critère d'information
             model = arch_model(train, vol='GARCH', p=p, q=q, mean=mean, dist=dist, lags=lag,  rescale=False)
         
-        
         else:
             lag=None
             p, q, _ = ARCH_search(train, p_max=10, q_max=10, vol='GARCH', mean=mean, dist=dist, criterion='aic')
@@ -100,7 +99,7 @@ for col in df_pivot.columns:
             'Ordre q': q,
             'Moyenne': mean,
             "Distribution d'erreur": dist,
-            'Retard' : "None" if mean != 'AR' else lag
+            'Retard' : "Aucun" if mean != 'AR' else lag
         })
             
         # Ajouter les informations sur le respect des hypothèses

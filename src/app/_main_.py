@@ -798,7 +798,7 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
                     'Ordre q': q,
                     'Moyenne': mean,
                     "Distribution d'erreur": dist,
-                    'Retard' : "None" if mean != 'AR' else lag
+                    'Retard' : "Aucun" if mean != 'AR' else lag
                 })
                     
                 # Ajouter les informations sur le respect des hypothèses
