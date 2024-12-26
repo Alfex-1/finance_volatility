@@ -152,7 +152,7 @@ def ARCH_search(data, p_max, q_max, o=0, vol='GARCH', mean='Constant', dist='nor
     """
     p_range = range(1, p_max + 1) if vol != 'FIGARCH' else [0, 1]
     q_range = range(1, q_max + 1) if vol != 'FIGARCH' else [0, 1]
-    lags_range = range(1, 8)
+    lags_range = range(1, 5)
     param_grid = {'p': p_range, 'q': q_range, 'lags': lags_range}
     grid = ParameterGrid(param_grid)
 
@@ -344,7 +344,7 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
     
     plt.figure(figsize=(9, 5))
     plt.plot(pred)
-    plt.title(f'\nPrédiction de volatilité des actions {col} pour les {horizon} prochains jours\n', fontsize=15)
+    plt.title(f'\nPrédiction de volatilité des actions {col} pour les {horizon-1} prochains jours\n', fontsize=15)
     plt.ylabel("Volatilité prédite (en %)", fontsize=12)
     plt.xticks(rotation=45)
     plt.grid(True)
