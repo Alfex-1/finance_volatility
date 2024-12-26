@@ -344,7 +344,7 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
     
     plt.figure(figsize=(9, 5))
     plt.plot(pred)
-    plt.title(f'\nPrédiction de volatilité des actions {col} pour les {horizon-1} prochains jours\n', fontsize=15)
+    plt.title(f'\nPrédiction de volatilité des actions {col} pour les {horizon} prochains jours\n', fontsize=15)
     plt.ylabel("Volatilité prédite (en %)", fontsize=12)
     plt.xticks(rotation=45)
     plt.grid(True)
@@ -417,7 +417,7 @@ st.write(
 )
 
 # Case à cocher pour "Analyse" et "Prédiction"
-option = st.selectbox("Choisissez une option", ["Analyse", "Prédiction"])
+option = st.selectbox("Choisissez le type d'étude que vous oulez mener", ["Analyse", "Prédiction"])
 
 # Entreprises
 url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
@@ -461,10 +461,14 @@ if option == "Analyse" and len(selected_companies) >=1:
 elif option == "Prédiction" and len(selected_companies) >=1:   
     # Importation des données
     end_date = st.date_input("Sélectionner la date de fin", value=pd.to_datetime("today"))
-    start_date = end_date - pd.Timedelta(days=365 + 30 * 6)
+    start_date = end_date - pd.Timedelta(days=365 + 31 * 6)
     
+    # Choisir de visualiser les performances sur la base de test
+    visu_perf=None
+    visu_perf = st.selectbox("Voulez-vous visualiser les performances de chaque modèle par rapport aux données rélles ?", ["Oui", "Non"])
+    st.warning("Attention : l'évaluation de chaque modèle prend du temps") if visu_perf == "Oui"
     # Choisir l'horizon des prédictions
-    horizon = st.slider("Choisissez l'horizon des prédictions (en jours)", min_value=2, max_value=15, value=7) + 1    
+    horizon = st.slider("Choisissez l'horizon des prédictions (en jours)", min_value=2, max_value=15, value=7)    
 
     selected_tickers = tickers[tickers['Security'].isin(selected_companies)]['Symbol'].tolist()
     df = import_data(selected_tickers, start_date, end_date)
@@ -693,7 +697,7 @@ if option == "Analyse" and len(selected_companies) >= 1 and start_date and end_d
         plt.grid(False)
         st.pyplot(plt) 
 
-elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and df is not None and launch:
+elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and df is not None and and visu_perf is not None and launch:
     gif_list = [
     "https://tenor.com/fr/view/pussy-financial-pussy-stonks-stocks-stonks-up-gif-24960970.gif",
     "https://tenor.com/fr/view/money-cat-gif-25358470.gif",
@@ -760,7 +764,10 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
 
             if all(df_val['Respect']) == 1:
                 dist='normal'
-                rolling_pred(real_values=df_pivot[col], train=train, test_size=test_size, vol="GARCH", p=p, q=q, mean=mean_t, dist=dist, col=col)
+                if visu_perf == 'Oui':
+                    rolling_pred(real_values=df_pivot[col], train=train, test_size=test_size, vol="GARCH", p=p, q=q, mean=mean_t, dist=dist, col=col)
+                else:
+                    continue
                 forecasting_volatility(data=df_pivot[col], model=model,vol='GARCH', p=p, q=q, mean=mean_t, dist='normal', col=col, horizon=horizon)
                 break
             else:
@@ -788,7 +795,10 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
                 df_val = model_validation(model)
                 
                 # Prédictions glissantes
-                rolling_pred(real_values=df_pivot[col], test_size=test_size, vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, lag=lag)
+                if visu_perf == 'Oui':
+                    rolling_pred(real_values=df_pivot[col], test_size=test_size, vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, lag=lag)
+                else:
+                    continue
                 forecasting_volatility(data=df_pivot[col], model=model,vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, lag=lag, horizon=horizon)
                         
                 # Ajouter les informations du modèle à la liste
