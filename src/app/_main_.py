@@ -412,8 +412,8 @@ def mean_dist(hyp_df, data, kurtosis, skewness):
 st.title("Analyse des prix et des rendements des actions de plusieurs entreprises et prédiction des risques associés")
 st.subheader("Auteur : BRUNET Alexandre")
 st.write(
-    ("Bienvenue sur l'application dans laquelle vous pouvez visualiser le prix des actions des entreprises ainsi que leur rendements quotidiens. "
-     "Vous pouvez égalemet choisir de visualiser les prédictions des risques liés à aux investissements des actions des entreprises, sur le court terme.")
+    ("Bienvenue sur l'application dans laquelle vous pouvez visualiser le prix des actions des entreprises ainsi que leurs rendements quotidiens. "
+     "Vous pouvez égalemet choisir de visualiser les prédictions des risques (la volatilité) liés à aux investissements des actions des entreprises, sur le court terme.")
 )
 
 # Case à cocher pour "Analyse" et "Prédiction"
@@ -820,7 +820,9 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
 
         # Informations des modèles
         model_summary_df = pd.DataFrame(model_summary)
+        model_summary_df.set_index('Entreprise', inplace=True)
         model_val_df = pd.DataFrame(model_val)
+        model_val_df.set_index('Entreprise', inplace=True)
         
         st.write("Veuillez trouver ci-dessous les modèles de volatilité (GARCH) utilisés pour les prédictions de chaque entreprise.")
         st.dataframe(model_summary_df)

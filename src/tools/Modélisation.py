@@ -114,7 +114,9 @@ for col in df_pivot.columns:
 
 # Informations des modèles
 model_summary_df = pd.DataFrame(model_summary)
+model_summary_df.set_index('Entreprise', inplace=True)
 model_val_df = pd.DataFrame(model_val)
+model_val_df.set_index('Entreprise', inplace=True)
 
 print(model_summary_df)
 print(model_val_df)
