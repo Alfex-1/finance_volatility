@@ -417,7 +417,7 @@ st.write(
 )
 
 # Case à cocher pour "Analyse" et "Prédiction"
-option = st.selectbox("Choisissez le type d'étude que vous oulez mener", ["Analyse", "Prédiction"])
+option = st.selectbox("Choisissez le type d'étude que vous voulez mener", ["Analyse", "Prédiction"])
 
 # Entreprises
 url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
@@ -442,8 +442,8 @@ if option == "Analyse" and len(selected_companies) >=1:
     default_start_date = default_end_date - timedelta(days=365)  # 1 an avant la date de fin
 
     # Utiliser Streamlit pour afficher les dates avec les valeurs par défaut
-    start_date = st.date_input("Date de début", value=default_start_date.date())
-    end_date = st.date_input("Date de fin", value=default_end_date.date())    
+    start_date = st.date_input("Sélectionnez la date à partir de laquelle les analyses débuteront", value=default_start_date.date())
+    end_date = st.date_input("Sélectionnez la date à partir de laquelle les analyses se finiront", value=default_end_date.date())    
 
     selected_tickers = tickers[tickers['Security'].isin(selected_companies)]['Symbol'].tolist()
     
@@ -461,7 +461,7 @@ if option == "Analyse" and len(selected_companies) >=1:
     
 elif option == "Prédiction" and len(selected_companies) >=1:   
     # Importation des données
-    end_date = st.date_input("Sélectionner la date de fin", value=pd.to_datetime("today"))
+    end_date = st.date_input("Sélectionnez la date à partir de laquelle les prédictions débuteront", value=pd.to_datetime("today"))
     start_date = end_date - pd.Timedelta(days=365 + 31 * 6)
     
     # Choisir de visualiser les performances sur la base de test
@@ -767,8 +767,6 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
                 dist='normal'
                 if visu_perf == 'Oui':
                     rolling_pred(real_values=df_pivot[col], train=train, test_size=test_size, vol="GARCH", p=p, q=q, mean=mean_t, dist=dist, col=col)
-                else:
-                    continue
                 forecasting_volatility(data=df_pivot[col], model=model,vol='GARCH', p=p, q=q, mean=mean_t, dist='normal', col=col, horizon=horizon)
                 break
             else:
@@ -798,8 +796,6 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
                 # Prédictions glissantes
                 if visu_perf == 'Oui':
                     rolling_pred(real_values=df_pivot[col], test_size=test_size, vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, lag=lag)
-                else:
-                    continue
                 forecasting_volatility(data=df_pivot[col], model=model,vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, lag=lag, horizon=horizon)
                         
                 # Ajouter les informations du modèle à la liste
