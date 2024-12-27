@@ -367,12 +367,12 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
     # Prévisions de la volatilité pour l'horizon donné
     pred = model_fit.forecast(horizon=horizon)
     future_dates = [data.index[-1] + timedelta(days=i) for i in range(1, horizon + 1)]
-    predicted_volatility = np.sqrt(pred.variance.values[-1, :])
+    predicted_volatility = round(np.sqrt(pred.variance.values[-1, :]),3)
 
     # Calcul du seuil de l'intervalle de confiance
     z_score = round(norm.ppf((1 + conf_level) / 2),3)
-    conf_int_lower = np.sqrt(pred.variance.values[-1, :] - z_score * np.sqrt(pred.variance.values[-1, :]))
-    conf_int_upper = np.sqrt(pred.variance.values[-1, :] + z_score * np.sqrt(pred.variance.values[-1, :]))
+    conf_int_lower = round(np.sqrt(pred.variance.values[-1, :] - z_score * np.sqrt(pred.variance.values[-1, :])),3)
+    conf_int_upper = round(np.sqrt(pred.variance.values[-1, :] + z_score * np.sqrt(pred.variance.values[-1, :])),3)
 
     # Création du graphique interactif avec Plotly
     fig = go.Figure()
@@ -380,10 +380,10 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
         x=future_dates, y=predicted_volatility, mode='lines', name=f'Volatilité prédite', line=dict(color='green')
     ))
     fig.add_trace(go.Scatter(
-        x=future_dates, y=conf_int_lower, mode='lines', name=f'Limite inférieure ({int(conf_level*100)}% CI)', line=dict(color='red', dash='dash')
+        x=future_dates, y=conf_int_lower, mode='lines', name=f'Limite inférieure ({int(conf_level*100)}%)', line=dict(color='red', dash='dash')
     ))
     fig.add_trace(go.Scatter(
-        x=future_dates, y=conf_int_upper, mode='lines', name=f'Limite supérieure ({int(conf_level*100)}% CI)', line=dict(color='red', dash='dash')
+        x=future_dates, y=conf_int_upper, mode='lines', name=f'Limite supérieure ({int(conf_level*100)}%)', line=dict(color='red', dash='dash')
     ))
     fig.update_layout(
         title=f'Prédiction de volatilité des actions {col} pour les {horizon} prochains jours',
@@ -393,6 +393,8 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
             tickformat='%d-%m-%Y', 
             tickangle=45
         ),
+        yaxis=dict(
+            range=[0, max(predicted_volatility.max()+0.2, conf_int_upper.max()+0.2)]),
         template="seaborn",
         title_font=dict(size=17),
         title_x=0.1,
