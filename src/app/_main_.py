@@ -334,8 +334,8 @@ def rolling_pred(real_values, test_size, vol, p, q, mean, dist, lag, col):
             xanchor='left', 
             yanchor='bottom'
         ),
-        title_font=dict(size=15),
-        title_x=0.2,
+        title_font=dict(size=20),
+        title_x=0,
         autosize=True,
         margin=dict(l=40, r=40, t=40, b=80))
     st.plotly_chart(fig)
@@ -383,8 +383,8 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
             tickangle=45
         ),
         template="seaborn",
-        title_font=dict(size=15),
-        title_x=0.2,
+        title_font=dict(size=20),
+        title_x=0,
         autosize=True,
         margin=dict(l=40, r=40, t=40, b=80))
     st.plotly_chart(fig)
@@ -454,8 +454,11 @@ st.write(
      "Vous pouvez égalemet choisir de visualiser les prédictions des risques (la volatilité) liés à aux investissements des actions des entreprises, sur le court terme.")
 )
 
+# Lien pour voir la documentation
+st.link_button("Voir la documentation", "https://github.com/Alfex-1/finance_volatility")
+
 # Case à cocher pour "Analyse" et "Prédiction"
-option = st.selectbox("Choisissez le type d'étude que vous voulez mener", ["Analyse", "Prédiction"])
+option = st.radio("Choisissez le type d'étude que vous voulez mener", ["Analyse", "Prédiction"])
 
 # Entreprises
 url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
@@ -512,8 +515,8 @@ elif option == "Prédiction" and len(selected_companies) >=1:
     start_date = end_date - pd.Timedelta(days=365 + 31 * 6)
     
     # Choisir de visualiser les performances sur la base de test
-    visu_perf = st.selectbox("Voulez-vous visualiser les performances de chaque modèle par rapport aux données rélles ?", ["Oui", "Non"])
-    st.warning("Attention : l'évaluation de chaque modèle prend du temps")
+    visu_perf = st.toggle("Voulez-vous visualiser les performances de chaque modèle par rapport aux données rélles ?", ["Oui", "Non"])
+    st.warning("Attention : l'évaluation de chaque modèle peut prendre du temps")
     
     # Choisir l'horizon des prédictions
     horizon = st.slider("Choisissez l'horizon des prédictions (en jours)", min_value=2, max_value=15, value=7)    
@@ -791,7 +794,7 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
         
         progress_bar = st.progress(0)
         status_text = st.empty()
-        if visu_perf == 'Oui':
+        if visu_perf:
             total_steps = len(df_pivot.columns)*5
         else:
             total_steps = len(df_pivot.columns)*4
@@ -837,7 +840,7 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
 
             if all(df_val['Respect']) == 1:
                 dist='normal'
-                if visu_perf == 'Oui':
+                if visu_perf :
                     current_step += 1
                     progress_bar.progress(current_step / total_steps)
                     status_text.text(f"Prévisions glissantes pour {col}...")
@@ -878,7 +881,7 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
                 df_val = model_validation(model)
                 
                 # Prédictions glissantes
-                if visu_perf == 'Oui':
+                if visu_perf:
                     current_step += 1
                     progress_bar.progress(current_step / total_steps)
                     status_text.text(f"Prévisions glissantes pour {col}...")
@@ -913,6 +916,8 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
         model_summary_df.set_index('Entreprise', inplace=True)
         model_val_df = pd.DataFrame(model_val)
         model_val_df.set_index('Entreprise', inplace=True)
+        
+        st.markdown("<hr>", unsafe_allow_html=True)
         
         st.write("Veuillez trouver ci-dessous les modèles de volatilité (GARCH) utilisés pour les prédictions de chaque entreprise.")
         st.dataframe(model_summary_df)
