@@ -112,10 +112,11 @@ def fit_model(params, data, mean, dist, vol, o, lags, criterion):
         dist (str): Distribution des résidus du modèle (par exemple, 'Normal', 'StudentsT', etc.).
         vol (str): Spécification du modèle de volatilité (par exemple, 'GARCH', 'EGARCH', etc.).
         o (int): Ordre de l'innovation (spécifique à certains modèles comme l'EGARCH).
+        lags (int): Nombre de décalages (lags) à inclure dans le modèle GARCH pour tenir compte de l'historique des données.
         criterion (str): Le critère d'évaluation à retourner ('aic' pour le critère d'information d'Akaike ou 'bic' pour le critère d'information bayésien).
 
     Returns:
-        dict: Dictionnaire contenant les valeurs des paramètres 'p' et 'q' et le critère spécifié ('AIC' ou 'BIC') du modèle ajusté.
+        dict: Dictionnaire contenant les valeurs des paramètres 'p' et 'q', le nombre de lags, et le critère spécifié ('AIC' ou 'BIC') du modèle ajusté.
     """
     p, q = params['p'], params['q']
     if mean == 'AR':
@@ -130,7 +131,6 @@ def fit_model(params, data, mean, dist, vol, o, lags, criterion):
         return {'p': p, 'q': q, 'lags': lags, 'AIC': model_fit.aic}
     elif criterion == 'bic':
         return {'p': p, 'q': q, 'lags': lags, 'BIC': model_fit.bic}
-
 
 def ARCH_search(data, p_max, q_max, o=0, vol='GARCH', mean='Constant', dist='normal', criterion='aic'):
     """
@@ -266,6 +266,7 @@ def forecast_volatility(i, real_values, test_size, vol, p, q, mean, dist, lag):
         q (int): L'ordre du modèle GARCH pour le retard de la volatilité conditionnelle passée.
         mean (str): Le modèle de moyenne à utiliser (par exemple, 'Constant', 'Zero', etc.).
         dist (str): La distribution des erreurs du modèle (par exemple, 'Normal', 't', etc.).
+        lag (int): Le nombre de décalages (lags) à inclure dans le modèle GARCH pour prendre en compte l'historique des valeurs.
 
     Returns:
         float: La volatilité prévisionnelle pour la période suivante, sous forme de racine carrée de la variance prédit.
@@ -275,6 +276,7 @@ def forecast_volatility(i, real_values, test_size, vol, p, q, mean, dist, lag):
     model_fit = model.fit(disp='off', options={'maxiter': 750})
     pred = model_fit.forecast(horizon=1)
     return np.sqrt(pred.variance.values[-1, :][0])
+
 
 def rolling_pred(real_values, test_size, vol, p, q, mean, dist, lag, col):
     """
@@ -289,34 +291,54 @@ def rolling_pred(real_values, test_size, vol, p, q, mean, dist, lag, col):
         q (int): Ordre du processus GARCH.
         mean (str): Modèle de la moyenne à utiliser ('Constant', 'Zero', etc.).
         dist (str): Distribution à utiliser pour les résidus ('normal', 't', 'skewt', etc.).
-        col (str, optional): Nom de la colonne associée à la série temporelle. Par défaut `col`.
-    
-    Returns:
-        pd.Series: Série des prévisions glissantes de la volatilité pour la période de test.
+        lag (int): Nombre de décalages (lags) à utiliser pour le modèle, nécessaire si le modèle de moyenne est 'AR'.
+        col (str): Nom de la colonne associée à la série temporelle.
     
     Displays:
         Un graphique des valeurs réelles de la série et des prévisions glissantes.
     """
     rolling_predictions = []
-    rolling_predictions = Parallel(n_jobs=-1, verbose=0)(
+    rolling_predictions = Parallel(n_jobs=-1, verbose=0)(  # Prédictions parallèles
         delayed(forecast_volatility)(i, real_values, test_size, vol, p, q, mean, dist, lag) for i in range(test_size)
     )
 
     rolling_predictions_df = pd.Series(rolling_predictions, index=real_values[-test_size:].index)
     true = real_values[-test_size:]
+    true = true.round(3)
     preds = rolling_predictions_df
-    preds.index = true.index 
-    
-    plt.figure(figsize=(9, 5))
-    plt.plot(true.index, true, label=f'Rendement réel')
-    plt.plot(true.index, preds, label='Volatilité prédite', linestyle='dashed')
-    plt.title(f'\nPrévision glissante de la volatilité des actions {col}\n', fontsize=15)
-    plt.legend(fontsize=12)
-    plt.ylabel('Volatilité et rendements (en %)')
-    plt.xticks(rotation=45)
-    plt.grid(True)
-    plt.tight_layout()
-    st.pyplot(plt)
+    preds.index = true.index
+    preds = preds.round(3)
+
+    # Création du graphique interactif avec Plotly
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=true.index, y=true, mode='lines', name=f'Rendement réel', line=dict(color='blue')
+    ))
+    fig.add_trace(go.Scatter(
+        x=preds.index, y=preds, mode='lines', name='Volatilité prédite', line=dict(color='red', dash='dash')
+    ))
+    fig.update_layout(
+        title=f'Prévision glissante de la volatilité des actions {col}',
+        xaxis_title=None,
+        yaxis_title='Volatilité et rendements (en %)',
+        xaxis=dict(
+            tickformat='%d-%m-%Y',
+            tickangle=45
+        ),
+        template="seaborn",
+        legend=dict(
+            font=dict(size=12),
+            x=0.01, y=0.01, 
+            traceorder='normal', 
+            orientation='h', 
+            xanchor='left', 
+            yanchor='bottom'
+        ),
+        title_font=dict(size=15),
+        title_x=0.5,
+        autosize=True,
+        margin=dict(l=40, r=40, t=40, b=80))
+    st.plotly_chart(fig)
 
 def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon):
     """
@@ -330,26 +352,42 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
         q (int): Ordre de la moyenne mobile (q) dans le modèle GARCH.
         mean (str): Modèle pour la moyenne (par exemple, 'Constant', 'AR', etc.).
         dist (str): Distribution des résidus dans le modèle (par exemple, 'normal', 't', etc.).
+        lag (int): Le nombre de décalages (lags) à utiliser pour le modèle, nécessaire si le modèle de moyenne est 'AR'.
         col (str): Le nom de l'actif ou de la colonne dans les données, utilisé pour les titres et légendes.
         horizon (int): L'horizon de prévision, c'est-à-dire le nombre de jours pour lesquels la volatilité doit être prédite.
 
-    Returns:
-        None: Affiche un graphique représentant la volatilité prédite pour l'horizon spécifié.
+    Displays:
+        Un graphique représentant la volatilité prédite pour l'horizon spécifié.
     """
+    # Modélisation ARCH/GARCH
     model = arch_model(data, vol=vol, p=p, q=q, mean=mean, dist=dist, lags=lag)
     model_fit = model.fit(disp='off', options={'maxiter': 750})
+
+    # Prévisions de la volatilité pour l'horizon donné
     pred = model_fit.forecast(horizon=horizon)
     future_dates = [data.index[-1] + timedelta(days=i) for i in range(1, horizon+1)]
     pred = pd.Series(np.sqrt(pred.variance.values[-1, :]), index=future_dates)
+    pred = pred.round(3)
     
-    plt.figure(figsize=(9, 5))
-    plt.plot(pred)
-    plt.title(f'\nPrédiction de la volatilité des actions {col} pour les {horizon} prochains jours\n', fontsize=15)
-    plt.ylabel("Volatilité prédite (en %)", fontsize=12)
-    plt.xticks(rotation=45)
-    plt.grid(True)
-    plt.tight_layout()
-    st.pyplot(plt)
+    # Création du graphique interactif avec Plotly
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=pred.index, y=pred, mode='lines', name=f'Volatilité prédite', line=dict(color='red')
+    ))
+    fig.update_layout(
+        title=f'Prédiction de volatilité des actions {col} pour les {horizon} prochains jours',
+        xaxis_title=None,
+        yaxis_title='Volatilité prédite (en %)',
+        xaxis=dict(
+            tickformat='%d-%m-%Y', 
+            tickangle=45
+        ),
+        template="seaborn",
+        title_font=dict(size=15),
+        title_x=0.5,
+        autosize=True,
+        margin=dict(l=40, r=40, t=40, b=80))
+    st.plotly_chart(fig)
     
 def mean_dist(hyp_df, data, kurtosis, skewness):
     """

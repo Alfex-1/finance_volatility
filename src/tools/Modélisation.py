@@ -1,5 +1,5 @@
 # Importation
-start_date='2022-06-01'
+start_date='2023-06-01'
 end_date='2024-01-01'
 df = import_data(["AAPL", "MSFT", "GOOG","META"], start_date, end_date)
 
