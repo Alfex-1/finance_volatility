@@ -529,7 +529,8 @@ elif option == "Prédiction" and len(selected_companies) >=1:
     
     # Choisir de visualiser les performances sur la base de test
     visu_perf = st.toggle("Visualisation des performances de chaque modèle par rapport aux données rélles")
-    st.warning("Attention : l'évaluation de chaque modèle peut prendre du temps")
+    if visu_perf:
+        st.warning("Attention : l'évaluation de chaque modèle peut prendre du temps")
     
     # Choisir l'intervalle de confiance des prédictions
     conf_int = st.slider("Sélectionnez le niveau de confiance pour les prédictions (en %)", min_value=80, max_value=99, value=95)
