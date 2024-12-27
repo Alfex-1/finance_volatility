@@ -12,7 +12,7 @@ from joblib import Parallel, delayed
 import statsmodels.api as sm
 from statsmodels.stats.stattools import jarque_bera
 from statsmodels.stats.diagnostic import acorr_ljungbox, het_arch
-from scipy.stats import skew, jarque_bera, shapiro, ttest_1samp
+from scipy.stats import skew, jarque_bera, shapiro, ttest_1samp, stats
 from arch import arch_model
 import math
 from sklearn.model_selection import ParameterGrid
