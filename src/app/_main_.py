@@ -377,13 +377,13 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
     # Création du graphique interactif avec Plotly
     fig = go.Figure()
     fig.add_trace(go.Scatter(
+        x=future_dates, y=conf_int_upper, mode='lines', name=f'Limite supérieure ({int(conf_level*100)}%)', line=dict(color='red', dash='dash')
+    ))
+    fig.add_trace(go.Scatter(
         x=future_dates, y=predicted_volatility, mode='lines', name=f'Volatilité prédite', line=dict(color='orange')
     ))
     fig.add_trace(go.Scatter(
         x=future_dates, y=conf_int_lower, mode='lines', name=f'Limite inférieure ({int(conf_level*100)}%)', line=dict(color='yellow', dash='dash')
-    ))
-    fig.add_trace(go.Scatter(
-        x=future_dates, y=conf_int_upper, mode='lines', name=f'Limite supérieure ({int(conf_level*100)}%)', line=dict(color='red', dash='dash')
     ))
     fig.update_layout(
         title=f'Prédiction de volatilité des actions {col} pour les {horizon} prochains jours',
