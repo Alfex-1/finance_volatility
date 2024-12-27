@@ -883,6 +883,7 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
         st.dataframe(model_val_df)
         gif_placeholder.empty()
         progress_bar.empty()
+        status_text.empty()
     
 else:
     st.write('Saisissez les options afin de débuter les analyses puis appuyer sur "Lancer"')
