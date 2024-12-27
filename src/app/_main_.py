@@ -865,7 +865,7 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
                 current_step += 1
                 progress_bar.progress(current_step / total_steps)
                 status_text.text(f"Prédictions pour {col}...")
-                forecasting_volatility(data=df_pivot[col], model=model,vol='GARCH', p=p, q=q, mean=mean_t, dist='normal', col=col, horizon=horizon, conf_int=conf_int)
+                forecasting_volatility(data=df_pivot[col], model=model,vol='GARCH', p=p, q=q, mean=mean_t, dist='normal', col=col, horizon=horizon, conf_level=conf_int)
                 current_step += 1
                 progress_bar.progress(current_step / total_steps)
                 break
@@ -906,7 +906,7 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
                 current_step += 1
                 progress_bar.progress(current_step / total_steps)
                 status_text.text(f"Prédictions pour {col}...")
-                forecasting_volatility(data=df_pivot[col], model=model,vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, lag=lag, horizon=horizon, conf_int=conf_int)
+                forecasting_volatility(data=df_pivot[col], model=model,vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, lag=lag, horizon=horizon, conf_level=conf_int)
                         
                 # Ajouter les informations du modèle à la liste
                 model_summary.append({
