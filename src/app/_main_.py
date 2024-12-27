@@ -458,7 +458,7 @@ if option == "Analyse" and len(selected_companies) >=1:
 
         if missing_days > 1:
             st.warning(f"Attention : les données ne sont pas disponibles pour les {missing_days} derniers jours.")
-        else:
+        elif missing_days == 1:
             st.warning(f"Attention : les données ne sont pas disponibles pour le dernier jour.")
 
         df = interpolate(df, start_date=start_date, end_date=end_date).dropna()
@@ -492,7 +492,7 @@ elif option == "Prédiction" and len(selected_companies) >=1:
 
         if missing_days > 1:
             st.warning(f"Attention : les données ne sont pas disponibles pour les {missing_days} derniers jours. Ils seront alors compris dans l'horizon temporel que vous sélectionnerez.")
-        else:
+        elif missing_days == 1:
             st.warning(f"Attention : les données ne sont pas disponibles pour le dernier jour. Il sera alors compris dans l'horizon temporel que vous sélectionnerez.")
             
         df = interpolate(df, start_date=start_date, end_date=end_date).dropna()
@@ -750,9 +750,21 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
         # Initialisation de la liste pour stocker les résultats
         model_summary = []
         model_val = []
+        
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        if visu_perf == 'Oui':
+            total_steps = len(df_pivot.columns)*5
+        else:
+            total_steps = len(df_pivot.columns)*4
+        current_step = 0
 
         # Choix et validation des modèles
         for col in df_pivot.columns:
+            current_step += 1
+            progress_bar.progress(current_step / total_steps)
+            status_text.text(f"Recherche des hyperparamètres pour {col}...")
+            
             train_size = int(len(df_pivot[col]) * (2/3))
             test_size = len(df_pivot[col]) - train_size
 
@@ -767,6 +779,10 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
             
             # Recherche des meilleurs hyperparamètres
             p, q, _ = ARCH_search(train, p_max=10, q_max=10, vol='GARCH', mean=mean_t, criterion='aic')
+            
+            current_step += 1
+            progress_bar.progress(current_step / total_steps)
+            status_text.text(f"Validation et ajustement du modèle pour {col}...")
 
             # Construction du meilleur modèle selon le critère d'information
             model = arch_model(train, vol='GARCH', p=p, q=q, mean=mean_t, rescale=False)
@@ -784,10 +800,22 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
             if all(df_val['Respect']) == 1:
                 dist='normal'
                 if visu_perf == 'Oui':
+                    current_step += 1
+                    progress_bar.progress(current_step / total_steps)
+                    status_text.text(f"Prévisions glissantes pour {col}...")
                     rolling_pred(real_values=df_pivot[col], train=train, test_size=test_size, vol="GARCH", p=p, q=q, mean=mean_t, dist=dist, col=col)
+                current_step += 1
+                progress_bar.progress(current_step / total_steps)
+                status_text.text(f"Prédictions pour {col}...")
                 forecasting_volatility(data=df_pivot[col], model=model,vol='GARCH', p=p, q=q, mean=mean_t, dist='normal', col=col, horizon=horizon)
+                current_step += 1
+                progress_bar.progress(current_step / total_steps)
                 break
             else:
+                current_step += 1
+                progress_bar.progress(current_step / total_steps)
+                status_text.text(f"Changement du modèle pour {col}...")
+                
                 # Choisir le meilleur modèle selon la violation des hypothèses et la distribution des résidus
                 mean, dist = mean_dist(df_val, train, kurt_val, skewness_val)
         
@@ -813,7 +841,13 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
                 
                 # Prédictions glissantes
                 if visu_perf == 'Oui':
+                    current_step += 1
+                    progress_bar.progress(current_step / total_steps)
+                    status_text.text(f"Prévisions glissantes pour {col}...")
                     rolling_pred(real_values=df_pivot[col], test_size=test_size, vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, lag=lag)
+                current_step += 1
+                progress_bar.progress(current_step / total_steps)
+                status_text.text(f"Prédictions pour {col}...")
                 forecasting_volatility(data=df_pivot[col], model=model,vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, lag=lag, horizon=horizon)
                         
                 # Ajouter les informations du modèle à la liste
@@ -848,6 +882,7 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
         st.write("Veuillez trouver ci-dessous le résumé du respect des hypothèses statistiques associées à chaque modèle.")
         st.dataframe(model_val_df)
         gif_placeholder.empty()
+        progress_bar.empty()
     
 else:
     st.write('Saisissez les options afin de débuter les analyses puis appuyer sur "Lancer"')
