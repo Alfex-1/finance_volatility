@@ -12,7 +12,7 @@ from joblib import Parallel, delayed
 import statsmodels.api as sm
 from statsmodels.stats.stattools import jarque_bera
 from statsmodels.stats.diagnostic import acorr_ljungbox, het_arch
-from scipy.stats import skew, jarque_bera, shapiro, ttest_1samp, stats
+from scipy.stats import skew, jarque_bera, shapiro, ttest_1samp, norm
 from arch import arch_model
 import math
 from sklearn.model_selection import ParameterGrid
@@ -370,7 +370,7 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
     predicted_volatility = np.sqrt(pred.variance.values[-1, :])
 
     # Calcul du seuil de l'intervalle de confiance
-    z_score = norm.ppf((1 + conf_level) / 2)
+    z_score = round(norm.ppf((1 + conf_level) / 2),3)
     conf_int_lower = np.sqrt(pred.variance.values[-1, :] - z_score * np.sqrt(pred.variance.values[-1, :]))
     conf_int_upper = np.sqrt(pred.variance.values[-1, :] + z_score * np.sqrt(pred.variance.values[-1, :]))
 
