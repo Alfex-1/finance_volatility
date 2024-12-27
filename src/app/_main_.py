@@ -456,12 +456,16 @@ if option == "Analyse" and len(selected_companies) >=1:
         last_data_date = df['Date'].max()
         missing_days = (end_date - last_data_date.date()).days
 
+        df = interpolate(df, start_date=start_date, end_date=end_date).dropna()
+        
+        # Prévenir des dates manquantes
+        missing_days = (pd.to_datetime(end_date) - pd.to_datetime(df['Date'].max())).days
         if missing_days > 1:
             st.warning(f"Attention : les données ne sont pas disponibles pour les {missing_days} derniers jours.")
         elif missing_days == 1:
             st.warning(f"Attention : les données ne sont pas disponibles pour le dernier jour.")
 
-        df = interpolate(df, start_date=start_date, end_date=end_date).dropna()
+        
         # Donner les vrais noms
         df['Ticker'] = df['Ticker'].map(ticker_to_name)
         
@@ -496,6 +500,14 @@ elif option == "Prédiction" and len(selected_companies) >=1:
             st.warning(f"Attention : les données ne sont pas disponibles pour le dernier jour. Il sera alors compris dans l'horizon temporel que vous sélectionnerez.")
             
         df = interpolate(df, start_date=start_date, end_date=end_date).dropna()
+        
+        # Prévenir des dates manquantes
+        missing_days = (pd.to_datetime(end_date) - pd.to_datetime(df['Date'].max())).days
+        if missing_days > 1:
+            st.warning(f"Attention : les données ne sont pas disponibles pour les {missing_days} derniers jours. Ils seront alors compris dans l'horizon temporel que vous sélectionnerez.")
+        elif missing_days == 1:
+            st.warning(f"Attention : les données ne sont pas disponibles pour le dernier jour. Il sera alors compris dans l'horizon temporel que vous sélectionnerez.")
+        
         # Donner les vrais noms
         df['Ticker'] = df['Ticker'].map(ticker_to_name)
         
