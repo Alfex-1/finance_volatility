@@ -340,24 +340,25 @@ def rolling_pred(real_values, test_size, vol, p, q, mean, dist, lag, col):
         margin=dict(l=40, r=40, t=40, b=80))
     st.plotly_chart(fig)
 
-def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon):
+def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon, conf_level=0.95):
     """
-    Prédit la volatilité future d'un actif à l'aide d'un modèle ARCH/GARCH ajusté, en générant des prévisions sur un horizon spécifié.
+    Prédit la volatilité future d'un actif avec un intervalle de confiance dynamique.
 
     Args:
-        data (pd.Series): Séries temporelles des rendements ou des prix historiques de l'actif sur lequel calculer la volatilité.
-        model (str): Le type de modèle ARCH/GARCH à utiliser pour la prévision (par exemple, 'GARCH', 'EGARCH', etc.).
-        vol (str): Modèle de volatilité à utiliser dans le cadre du modèle ARCH/GARCH (par exemple, 'GARCH', 'EGARCH').
+        data (pd.Series): Séries temporelles des rendements ou des prix historiques de l'actif.
+        model (str): Type de modèle ARCH/GARCH à utiliser pour la prévision (par exemple, 'GARCH', 'EGARCH').
+        vol (str): Modèle de volatilité à utiliser (par exemple, 'GARCH', 'EGARCH').
         p (int): Ordre de l'auto-régression (p) dans le modèle GARCH.
         q (int): Ordre de la moyenne mobile (q) dans le modèle GARCH.
-        mean (str): Modèle pour la moyenne (par exemple, 'Constant', 'AR', etc.).
-        dist (str): Distribution des résidus dans le modèle (par exemple, 'normal', 't', etc.).
-        lag (int): Le nombre de décalages (lags) à utiliser pour le modèle, nécessaire si le modèle de moyenne est 'AR'.
-        col (str): Le nom de l'actif ou de la colonne dans les données, utilisé pour les titres et légendes.
-        horizon (int): L'horizon de prévision, c'est-à-dire le nombre de jours pour lesquels la volatilité doit être prédite.
+        mean (str): Modèle de moyenne (par exemple, 'Constant', 'AR').
+        dist (str): Distribution des résidus dans le modèle (par exemple, 'normal', 't').
+        lag (int): Le nombre de décalages à utiliser si le modèle de moyenne est 'AR'.
+        col (str): Le nom de l'actif ou de la colonne dans les données.
+        horizon (int): L'horizon de prévision, en nombre de jours pour lesquels la volatilité doit être prédite.
+        conf_level (float, optional): Niveau de confiance pour l'intervalle (par défaut 0.95).
 
-    Displays:
-        Un graphique représentant la volatilité prédite pour l'horizon spécifié.
+    Affiche :
+        Un graphique représentant la volatilité prédite avec l'intervalle de confiance pour l'horizon spécifié.
     """
     # Modélisation ARCH/GARCH
     model = arch_model(data, vol=vol, p=p, q=q, mean=mean, dist=dist, lags=lag)
@@ -365,14 +366,24 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
 
     # Prévisions de la volatilité pour l'horizon donné
     pred = model_fit.forecast(horizon=horizon)
-    future_dates = [data.index[-1] + timedelta(days=i) for i in range(1, horizon+1)]
-    pred = pd.Series(np.sqrt(pred.variance.values[-1, :]), index=future_dates)
-    pred = pred.round(3)
-    
+    future_dates = [data.index[-1] + timedelta(days=i) for i in range(1, horizon + 1)]
+    predicted_volatility = np.sqrt(pred.variance.values[-1, :])
+
+    # Calcul du seuil de l'intervalle de confiance
+    z_score = stats.norm.ppf((1 + conf_level) / 2)
+    conf_int_lower = np.sqrt(pred.variance.values[-1, :] - z_score * np.sqrt(pred.variance.values[-1, :]))
+    conf_int_upper = np.sqrt(pred.variance.values[-1, :] + z_score * np.sqrt(pred.variance.values[-1, :]))
+
     # Création du graphique interactif avec Plotly
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=pred.index, y=pred, mode='lines', name=f'Volatilité prédite', line=dict(color='green')
+        x=future_dates, y=predicted_volatility, mode='lines', name=f'Volatilité prédite', line=dict(color='green')
+    ))
+    fig.add_trace(go.Scatter(
+        x=future_dates, y=conf_int_lower, mode='lines', name=f'Limite inférieure ({int(conf_level*100)}% CI)', line=dict(color='red', dash='dash')
+    ))
+    fig.add_trace(go.Scatter(
+        x=future_dates, y=conf_int_upper, mode='lines', name=f'Limite supérieure ({int(conf_level*100)}% CI)', line=dict(color='red', dash='dash')
     ))
     fig.update_layout(
         title=f'Prédiction de volatilité des actions {col} pour les {horizon} prochains jours',
@@ -388,6 +399,8 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
         autosize=True,
         margin=dict(l=40, r=40, t=40, b=80))
     st.plotly_chart(fig)
+
+
     
 def mean_dist(hyp_df, data, kurtosis, skewness):
     """
@@ -517,6 +530,10 @@ elif option == "Prédiction" and len(selected_companies) >=1:
     # Choisir de visualiser les performances sur la base de test
     visu_perf = st.toggle("Visualisation des performances de chaque modèle par rapport aux données rélles")
     st.warning("Attention : l'évaluation de chaque modèle peut prendre du temps")
+    
+    # Choisir l'intervalle de confiance des prédictions
+    conf_int = st.slider("Sélectionnez le niveau de confiance pour les prédictions (en %)", min_value=80, max_value=99, value=95)
+    conf_int = conf_int/100
     
     # Choisir l'horizon des prédictions
     horizon = st.slider("Choisissez l'horizon des prédictions (en jours)", min_value=2, max_value=15, value=7)    
@@ -848,7 +865,7 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
                 current_step += 1
                 progress_bar.progress(current_step / total_steps)
                 status_text.text(f"Prédictions pour {col}...")
-                forecasting_volatility(data=df_pivot[col], model=model,vol='GARCH', p=p, q=q, mean=mean_t, dist='normal', col=col, horizon=horizon)
+                forecasting_volatility(data=df_pivot[col], model=model,vol='GARCH', p=p, q=q, mean=mean_t, dist='normal', col=col, horizon=horizon, conf_int=conf_int)
                 current_step += 1
                 progress_bar.progress(current_step / total_steps)
                 break
@@ -889,7 +906,7 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
                 current_step += 1
                 progress_bar.progress(current_step / total_steps)
                 status_text.text(f"Prédictions pour {col}...")
-                forecasting_volatility(data=df_pivot[col], model=model,vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, lag=lag, horizon=horizon)
+                forecasting_volatility(data=df_pivot[col], model=model,vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, lag=lag, horizon=horizon, conf_int=conf_int)
                         
                 # Ajouter les informations du modèle à la liste
                 model_summary.append({
