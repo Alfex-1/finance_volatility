@@ -335,7 +335,7 @@ def rolling_pred(real_values, test_size, vol, p, q, mean, dist, lag, col):
             yanchor='bottom'
         ),
         title_font=dict(size=15),
-        title_x=0.1,
+        title_x=0.2,
         autosize=True,
         margin=dict(l=40, r=40, t=40, b=80))
     st.plotly_chart(fig)
@@ -384,7 +384,7 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
         ),
         template="seaborn",
         title_font=dict(size=15),
-        title_x=0.1,
+        title_x=0.2,
         autosize=True,
         margin=dict(l=40, r=40, t=40, b=80))
     st.plotly_chart(fig)
@@ -437,13 +437,13 @@ def mean_dist(hyp_df, data, kurtosis, skewness):
         dist='normal'
     else:
         if diff_kurt >= 0.3 and abs(skewness) >= 0.3:
-            dist='ged'
+            dist='skewt'
         elif diff_kurt >= 0.3 and abs(skewness) < 0.3:
             dist = 't'
         elif diff_kurt < 0.3 and abs(skewness) >= 0.3:
             dist = 'skewt'
         else:
-            dist='t'
+            dist='ged'
 
     return str(mean), str(dist)
 
@@ -820,7 +820,7 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
             
             current_step += 1
             progress_bar.progress(current_step / total_steps)
-            status_text.text(f"Validation et ajustement du modèle pour {col}...")
+            status_text.text(f"Validation du modèle pour {col}...")
 
             # Construction du meilleur modèle selon le critère d'information
             model = arch_model(train, vol='GARCH', p=p, q=q, mean=mean_t, rescale=False)
@@ -852,7 +852,7 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
             else:
                 current_step += 1
                 progress_bar.progress(current_step / total_steps)
-                status_text.text(f"Changement du modèle pour {col}...")
+                status_text.text(f"Optimisation du modèle pour {col}...")
                 
                 # Choisir le meilleur modèle selon la violation des hypothèses et la distribution des résidus
                 mean, dist = mean_dist(df_val, train, kurt_val, skewness_val)
