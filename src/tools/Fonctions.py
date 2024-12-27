@@ -333,7 +333,7 @@ def rolling_pred(real_values, test_size, vol, p, q, mean, dist, lag, col):
             yanchor='bottom'
         ),
         title_font=dict(size=15),
-        title_x=0.5,
+        title_x=0.1,
         autosize=True,
         margin=dict(l=40, r=40, t=40, b=80))
     fig.show()
@@ -370,7 +370,7 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
     # Création du graphique interactif avec Plotly
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=pred.index, y=pred, mode='lines', name=f'Volatilité prédite', line=dict(color='red')
+        x=pred.index, y=pred, mode='lines', name=f'Volatilité prédite', line=dict(color='green')
     ))
     fig.update_layout(
         title=f'Prédiction de volatilité des actions {col} pour les {horizon} prochains jours',
@@ -382,7 +382,7 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
         ),
         template="seaborn",
         title_font=dict(size=15),
-        title_x=0.5,
+        title_x=0.1,
         autosize=True,
         margin=dict(l=40, r=40, t=40, b=80))
     fig.show()
@@ -435,12 +435,12 @@ def mean_dist(hyp_df, data, kurtosis, skewness):
         dist='normal'
     else:
         if diff_kurt >= 0.3 and abs(skewness) >= 0.3:
-            dist='ged'
+            dist='skewt'
         elif diff_kurt >= 0.3 and abs(skewness) < 0.3:
             dist = 't'
         elif diff_kurt < 0.3 and abs(skewness) >= 0.3:
             dist = 'skewt'
         else:
-            dist='t'
+            dist='ged'
 
     return str(mean), str(dist)

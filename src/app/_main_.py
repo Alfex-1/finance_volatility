@@ -152,7 +152,7 @@ def ARCH_search(data, p_max, q_max, o=0, vol='GARCH', mean='Constant', dist='nor
     """
     p_range = range(1, p_max + 1) if vol != 'FIGARCH' else [0, 1]
     q_range = range(1, q_max + 1) if vol != 'FIGARCH' else [0, 1]
-    lags_range = range(1, 5)
+    lags_range = range(1, 8)
     param_grid = {'p': p_range, 'q': q_range, 'lags': lags_range}
     grid = ParameterGrid(param_grid)
 
@@ -334,8 +334,8 @@ def rolling_pred(real_values, test_size, vol, p, q, mean, dist, lag, col):
             xanchor='left', 
             yanchor='bottom'
         ),
-        title_font=dict(size=20),
-        title_x=0,
+        title_font=dict(size=17),
+        title_x=0.1,
         autosize=True,
         margin=dict(l=40, r=40, t=40, b=80))
     st.plotly_chart(fig)
@@ -372,7 +372,7 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
     # Création du graphique interactif avec Plotly
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=pred.index, y=pred, mode='lines', name=f'Volatilité prédite', line=dict(color='red')
+        x=pred.index, y=pred, mode='lines', name=f'Volatilité prédite', line=dict(color='green')
     ))
     fig.update_layout(
         title=f'Prédiction de volatilité des actions {col} pour les {horizon} prochains jours',
@@ -383,8 +383,8 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
             tickangle=45
         ),
         template="seaborn",
-        title_font=dict(size=20),
-        title_x=0,
+        title_font=dict(size=17),
+        title_x=0.1,
         autosize=True,
         margin=dict(l=40, r=40, t=40, b=80))
     st.plotly_chart(fig)
@@ -515,7 +515,7 @@ elif option == "Prédiction" and len(selected_companies) >=1:
     start_date = end_date - pd.Timedelta(days=365 + 31 * 6)
     
     # Choisir de visualiser les performances sur la base de test
-    visu_perf = st.toggle("Voulez-vous visualiser les performances de chaque modèle par rapport aux données rélles ?", ["Oui", "Non"])
+    visu_perf = st.toggle("Visualisation des performances de chaque modèle par rapport aux données rélles")
     st.warning("Attention : l'évaluation de chaque modèle peut prendre du temps")
     
     # Choisir l'horizon des prédictions
