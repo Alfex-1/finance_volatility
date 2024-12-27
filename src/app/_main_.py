@@ -370,7 +370,7 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
     predicted_volatility = np.sqrt(pred.variance.values[-1, :])
 
     # Calcul du seuil de l'intervalle de confiance
-    z_score = stats.norm.ppf((1 + conf_level) / 2)
+    z_score = norm.ppf((1 + conf_level) / 2)
     conf_int_lower = np.sqrt(pred.variance.values[-1, :] - z_score * np.sqrt(pred.variance.values[-1, :]))
     conf_int_upper = np.sqrt(pred.variance.values[-1, :] + z_score * np.sqrt(pred.variance.values[-1, :]))
 
