@@ -377,10 +377,10 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
     # Création du graphique interactif avec Plotly
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=future_dates, y=predicted_volatility, mode='lines', name=f'Volatilité prédite', line=dict(color='green')
+        x=future_dates, y=predicted_volatility, mode='lines', name=f'Volatilité prédite', line=dict(color='orange')
     ))
     fig.add_trace(go.Scatter(
-        x=future_dates, y=conf_int_lower, mode='lines', name=f'Limite inférieure ({int(conf_level*100)}%)', line=dict(color='red', dash='dash')
+        x=future_dates, y=conf_int_lower, mode='lines', name=f'Limite inférieure ({int(conf_level*100)}%)', line=dict(color='yellow', dash='dash')
     ))
     fig.add_trace(go.Scatter(
         x=future_dates, y=conf_int_upper, mode='lines', name=f'Limite supérieure ({int(conf_level*100)}%)', line=dict(color='red', dash='dash')
@@ -393,8 +393,7 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
             tickformat='%d-%m-%Y', 
             tickangle=45
         ),
-        yaxis=dict(
-            range=[min(predicted_volatility.min()-0.2, conf_int_lower.min()-0.2), max(predicted_volatility.max()+0.2, conf_int_upper.max()+0.2)]),
+        yaxis=dict(range=[conf_int_lower.min()-0.2, conf_int_upper.max()+0.2]),
         template="seaborn",
         title_font=dict(size=17),
         title_x=0.1,
