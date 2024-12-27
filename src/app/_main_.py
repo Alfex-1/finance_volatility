@@ -367,12 +367,12 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
     # Prévisions de la volatilité pour l'horizon donné
     pred = model_fit.forecast(horizon=horizon)
     future_dates = [data.index[-1] + timedelta(days=i) for i in range(1, horizon + 1)]
-    predicted_volatility = round(np.sqrt(pred.variance.values[-1, :]),3)
+    predicted_volatility = np.sqrt(pred.variance.values[-1, :]).round(3)
 
     # Calcul du seuil de l'intervalle de confiance
     z_score = round(norm.ppf((1 + conf_level) / 2),3)
-    conf_int_lower = round(np.sqrt(pred.variance.values[-1, :] - z_score * np.sqrt(pred.variance.values[-1, :])),3)
-    conf_int_upper = round(np.sqrt(pred.variance.values[-1, :] + z_score * np.sqrt(pred.variance.values[-1, :])),3)
+    conf_int_lower = np.sqrt(pred.variance.values[-1, :] - z_score * np.sqrt(pred.variance.values[-1, :])).round(3)
+    conf_int_upper = np.sqrt(pred.variance.values[-1, :] + z_score * np.sqrt(pred.variance.values[-1, :])).round(3)
 
     # Création du graphique interactif avec Plotly
     fig = go.Figure()
@@ -394,7 +394,7 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
             tickangle=45
         ),
         yaxis=dict(
-            range=[0, max(predicted_volatility.max()+0.2, conf_int_upper.max()+0.2)]),
+            range=[min(predicted_volatility.min()-0.2, conf_int_lower.min()-0.2), max(predicted_volatility.max()+0.2, conf_int_upper.max()+0.2)]),
         template="seaborn",
         title_font=dict(size=17),
         title_x=0.1,
