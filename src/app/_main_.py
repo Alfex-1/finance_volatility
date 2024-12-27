@@ -325,7 +325,7 @@ def rolling_pred(real_values, test_size, vol, p, q, mean, dist, lag, col):
             tickformat='%d-%m-%Y',
             tickangle=45
         ),
-        template="plotly_white",
+        template="seaborn",
         legend=dict(
             font=dict(size=12),
             x=0.01, y=0.01, 
@@ -335,9 +335,9 @@ def rolling_pred(real_values, test_size, vol, p, q, mean, dist, lag, col):
             yanchor='bottom'
         ),
         title_font=dict(size=15),
-        title_x=0.5,
+        title_x=0.1,
         autosize=True,
-        margin=dict(l=40, r=40, t=60, b=80))
+        margin=dict(l=40, r=40, t=40, b=80))
     st.plotly_chart(fig)
 
 def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon):
@@ -382,11 +382,11 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
             tickformat='%d-%m-%Y', 
             tickangle=45
         ),
-        template="plotly_white",
+        template="seaborn",
         title_font=dict(size=15),
-        title_x=0.5,
+        title_x=0.1,
         autosize=True,
-        margin=dict(l=40, r=40, t=60, b=80))
+        margin=dict(l=40, r=40, t=40, b=80))
     st.plotly_chart(fig)
     
 def mean_dist(hyp_df, data, kurtosis, skewness):
