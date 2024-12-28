@@ -318,7 +318,7 @@ def rolling_pred(real_values, test_size, vol, p, q, mean, dist, lag, col):
         x=preds.index, y=preds, mode='lines', name='Volatilité prédite', line=dict(color='red', dash='dash')
     ))
     fig.update_layout(
-        title=f'Prévision glissante de la volatilité des actions {col}',
+        title=f'Prévisions glissantes de la volatilité des actions {col}',
         xaxis_title=None,
         yaxis_title='Volatilité et rendements (en %)',
         xaxis=dict(
@@ -390,6 +390,7 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
         x=future_dates, y=conf_int_lower, mode='lines', name=f'Limite inférieure ({int(conf_level*100)}%)', line=dict(color='yellow', dash='dash')
     ))
     fig.update_layout(
+        legend=dict(traceorder='normal'),
         title=f'Prédiction de volatilité des actions {col} pour les {horizon} prochains jours',
         xaxis_title=None,
         yaxis_title='Volatilité prédite (en %)',
@@ -397,13 +398,14 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
             tickformat='%d-%m-%Y', 
             tickangle=45
         ),
-        yaxis=dict(range=[y_min, y_max]),
+        yaxis=dict(range=[y_min, y_max],
+                   autorange=False),
         template="seaborn",
         title_font=dict(size=17),
         title_x=0.1,
         autosize=True,
         margin=dict(l=40, r=40, t=40, b=80))
-    st.plotly_chart(fig)
+    st.plotly_chart(fig, use_container_width=False)
 
 
     
@@ -538,7 +540,7 @@ elif option == "Prédiction" and len(selected_companies) >=1:
         st.warning("Attention : l'évaluation de chaque modèle peut prendre du temps")
     
     # Choisir l'intervalle de confiance des prédictions
-    conf_int = st.slider("Sélectionnez le niveau de confiance pour les prédictions (en %)", min_value=80, max_value=99, value=95)
+    conf_int = st.slider("Choisissez le degré de certitude des prédictions (en %).", min_value=80, max_value=99, value=95)
     conf_int = conf_int/100
     
     # Choisir l'horizon des prédictions
