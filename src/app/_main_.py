@@ -374,6 +374,9 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
     conf_int_lower = np.sqrt(pred.variance.values[-1, :] - z_score * np.sqrt(pred.variance.values[-1, :])).round(3)
     conf_int_upper = np.sqrt(pred.variance.values[-1, :] + z_score * np.sqrt(pred.variance.values[-1, :])).round(3)
     conf_int_lower = np.clip(conf_int_lower, 0, None)
+    
+    y_min = conf_int_lower.min()-0.2
+    y_max = conf_int_upper.max()+0.2
 
     # Création du graphique interactif avec Plotly
     fig = go.Figure()
@@ -394,7 +397,7 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
             tickformat='%d-%m-%Y', 
             tickangle=45
         ),
-        yaxis=dict(range=[conf_int_lower.min()-0.2, conf_int_upper.max()+0.2]),
+        yaxis=dict(range=[y_min, y_max]),
         template="seaborn",
         title_font=dict(size=17),
         title_x=0.1,
