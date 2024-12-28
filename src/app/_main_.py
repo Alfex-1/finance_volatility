@@ -391,7 +391,7 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
     ))
     fig.update_layout(
         legend=dict(traceorder='normal'),
-        title=f'Prédiction de volatilité des actions {col} pour les {horizon} prochains jours',
+        title=f'Prédiction de la volatilité des actions {col} pour les {horizon} prochains jours',
         xaxis_title=None,
         yaxis_title='Volatilité prédite (en %)',
         xaxis=dict(
