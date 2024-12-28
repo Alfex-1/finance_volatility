@@ -373,6 +373,7 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
     z_score = round(norm.ppf((1 + conf_level) / 2),3)
     conf_int_lower = np.sqrt(pred.variance.values[-1, :] - z_score * np.sqrt(pred.variance.values[-1, :])).round(3)
     conf_int_upper = np.sqrt(pred.variance.values[-1, :] + z_score * np.sqrt(pred.variance.values[-1, :])).round(3)
+    conf_int_lower = np.clip(conf_int_lower, 0, None)
 
     # Création du graphique interactif avec Plotly
     fig = go.Figure()
