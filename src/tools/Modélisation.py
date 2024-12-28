@@ -1,7 +1,8 @@
 # Importation
 start_date='2023-06-01'
 end_date='2024-01-01'
-df = import_data(["AAPL", "MSFT", "GOOG","META"], start_date, end_date)
+# df = import_data(["AAPL", "MSFT", "GOOG","META"], start_date, end_date)
+df = import_data(["MSFT"], start_date, end_date)
 
 # Interpolation des données manquantes
 df = interpolate(df, start_date=start_date, end_date=end_date).dropna()
@@ -63,7 +64,7 @@ for col in df_pivot.columns:
     if all(df_val['Respect']) == 1:
         dist='normal'
         rolling_pred(real_values=df_pivot[col], train=train, test_size=test_size, vol="GARCH", p=p, q=q, mean=mean_t, dist=dist, col=col)
-        forecasting_volatility(data=df_pivot[col], model=model,vol='GARCH', p=p, q=q, mean=mean_t, dist='normal', col=col, horizon=horizon)
+        forecasting_volatility(data=df_pivot[col], model=model,vol='GARCH', p=p, q=q, mean=mean_t, dist='normal', col=col, horizon=horizon, conf_level=0.95)
         break
     else:
         # Choisir le meilleur modèle selon la violation des hypothèses et la distribution des résidus
@@ -90,7 +91,7 @@ for col in df_pivot.columns:
         
         # Prédictions glissantes
         rolling_pred(real_values=df_pivot[col], test_size=test_size, vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, lag=lag)
-        forecasting_volatility(data=df_pivot[col], model=model,vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, lag=lag, horizon=horizon)
+        forecasting_volatility(data=df_pivot[col], model=model,vol='GARCH', p=p, q=q, mean=mean, dist=dist, col=col, lag=lag, horizon=horizon, conf_level=0.95)
                 
         # Ajouter les informations du modèle à la liste
         model_summary.append({

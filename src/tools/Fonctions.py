@@ -11,7 +11,7 @@ from joblib import Parallel, delayed
 import statsmodels.api as sm
 from statsmodels.stats.stattools import jarque_bera
 from statsmodels.stats.diagnostic import acorr_ljungbox, het_arch
-from scipy.stats import skew, jarque_bera, shapiro, ttest_1samp
+from scipy.stats import skew, jarque_bera, shapiro, ttest_1samp, norm
 from arch import arch_model
 import math
 from sklearn.model_selection import ParameterGrid
@@ -275,7 +275,6 @@ def forecast_volatility(i, real_values, test_size, vol, p, q, mean, dist, lag):
     pred = model_fit.forecast(horizon=1)
     return np.sqrt(pred.variance.values[-1, :][0])
 
-
 def rolling_pred(real_values, test_size, vol, p, q, mean, dist, lag, col):
     """
     Effectue des prévisions glissantes de la volatilité pour une série temporelle donnée 
@@ -316,7 +315,7 @@ def rolling_pred(real_values, test_size, vol, p, q, mean, dist, lag, col):
         x=preds.index, y=preds, mode='lines', name='Volatilité prédite', line=dict(color='red', dash='dash')
     ))
     fig.update_layout(
-        title=f'Prévision glissante de la volatilité des actions {col}',
+        title=f'Prévisions glissantes de la volatilité des actions {col}',
         xaxis_title=None,
         yaxis_title='Volatilité et rendements (en %)',
         xaxis=dict(
@@ -332,30 +331,31 @@ def rolling_pred(real_values, test_size, vol, p, q, mean, dist, lag, col):
             xanchor='left', 
             yanchor='bottom'
         ),
-        title_font=dict(size=15),
+        title_font=dict(size=17),
         title_x=0.1,
         autosize=True,
         margin=dict(l=40, r=40, t=40, b=80))
     fig.show()
 
-def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon):
+def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon, conf_level=0.95):
     """
-    Prédit la volatilité future d'un actif à l'aide d'un modèle ARCH/GARCH ajusté, en générant des prévisions sur un horizon spécifié.
+    Prédit la volatilité future d'un actif avec un intervalle de confiance dynamique.
 
     Args:
-        data (pd.Series): Séries temporelles des rendements ou des prix historiques de l'actif sur lequel calculer la volatilité.
-        model (str): Le type de modèle ARCH/GARCH à utiliser pour la prévision (par exemple, 'GARCH', 'EGARCH', etc.).
-        vol (str): Modèle de volatilité à utiliser dans le cadre du modèle ARCH/GARCH (par exemple, 'GARCH', 'EGARCH').
+        data (pd.Series): Séries temporelles des rendements ou des prix historiques de l'actif.
+        model (str): Type de modèle ARCH/GARCH à utiliser pour la prévision (par exemple, 'GARCH', 'EGARCH').
+        vol (str): Modèle de volatilité à utiliser (par exemple, 'GARCH', 'EGARCH').
         p (int): Ordre de l'auto-régression (p) dans le modèle GARCH.
         q (int): Ordre de la moyenne mobile (q) dans le modèle GARCH.
-        mean (str): Modèle pour la moyenne (par exemple, 'Constant', 'AR', etc.).
-        dist (str): Distribution des résidus dans le modèle (par exemple, 'normal', 't', etc.).
-        lag (int): Le nombre de décalages (lags) à utiliser pour le modèle, nécessaire si le modèle de moyenne est 'AR'.
-        col (str): Le nom de l'actif ou de la colonne dans les données, utilisé pour les titres et légendes.
-        horizon (int): L'horizon de prévision, c'est-à-dire le nombre de jours pour lesquels la volatilité doit être prédite.
+        mean (str): Modèle de moyenne (par exemple, 'Constant', 'AR').
+        dist (str): Distribution des résidus dans le modèle (par exemple, 'normal', 't').
+        lag (int): Le nombre de décalages à utiliser si le modèle de moyenne est 'AR'.
+        col (str): Le nom de l'actif ou de la colonne dans les données.
+        horizon (int): L'horizon de prévision, en nombre de jours pour lesquels la volatilité doit être prédite.
+        conf_level (float, optional): Niveau de confiance pour l'intervalle (par défaut 0.95).
 
-    Displays:
-        Un graphique représentant la volatilité prédite pour l'horizon spécifié.
+    Affiche :
+        Un graphique représentant la volatilité prédite avec l'intervalle de confiance pour l'horizon spécifié.
     """
     # Modélisation ARCH/GARCH
     model = arch_model(data, vol=vol, p=p, q=q, mean=mean, dist=dist, lags=lag)
@@ -363,16 +363,30 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
 
     # Prévisions de la volatilité pour l'horizon donné
     pred = model_fit.forecast(horizon=horizon)
-    future_dates = [data.index[-1] + timedelta(days=i) for i in range(1, horizon+1)]
-    pred = pd.Series(np.sqrt(pred.variance.values[-1, :]), index=future_dates)
-    pred = pred.round(3)
+    future_dates = [data.index[-1] + timedelta(days=i) for i in range(1, horizon + 1)]
+    predicted_volatility = np.sqrt(pred.variance.values[-1, :]).round(3)
     
+    # Remplacement des valeurs négatives dans la variance par 0
+    variance_values = np.maximum(pred.variance.values[-1, :], 0)
+
+    # Calcul du seuil de l'intervalle de confiance
+    z_score = round(norm.ppf((1 + conf_level) / 2),3)
+    conf_int_lower = np.sqrt(np.maximum(variance_values - z_score * np.sqrt(variance_values), 0)).round(3)
+    conf_int_upper = np.sqrt(pred.variance.values[-1, :] + z_score * np.sqrt(pred.variance.values[-1, :])).round(3)
+
     # Création du graphique interactif avec Plotly
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=pred.index, y=pred, mode='lines', name=f'Volatilité prédite', line=dict(color='green')
+        x=future_dates, y=conf_int_upper, mode='lines', name=f'Limite supérieure ({int(conf_level*100)}%)', line=dict(color='red', dash='dash')
+    ))
+    fig.add_trace(go.Scatter(
+        x=future_dates, y=predicted_volatility, mode='lines', name=f'Volatilité prédite', line=dict(color='orange')
+    ))
+    fig.add_trace(go.Scatter(
+        x=future_dates, y=conf_int_lower, mode='lines', name=f'Limite inférieure ({int(conf_level*100)}%)', line=dict(color='yellow', dash='dash')
     ))
     fig.update_layout(
+        legend=dict(traceorder='normal'),
         title=f'Prédiction de volatilité des actions {col} pour les {horizon} prochains jours',
         xaxis_title=None,
         yaxis_title='Volatilité prédite (en %)',
@@ -380,8 +394,10 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
             tickformat='%d-%m-%Y', 
             tickangle=45
         ),
+        yaxis=dict(range=[conf_int_lower.min(), conf_int_upper.max()],
+                   autorange=False),
         template="seaborn",
-        title_font=dict(size=15),
+        title_font=dict(size=17),
         title_x=0.1,
         autosize=True,
         margin=dict(l=40, r=40, t=40, b=80))
