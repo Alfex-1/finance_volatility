@@ -783,25 +783,7 @@ if option == "Analyse" and len(selected_companies) >= 1 and start_date and end_d
         st.pyplot(plt) 
 
 elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and df is not None and visu_perf is not None and launch:
-    gif_list = [
-    "https://tenor.com/fr/view/pussy-financial-pussy-stonks-stocks-stonks-up-gif-24960970.gif",
-    "https://tenor.com/fr/view/money-cat-gif-25358470.gif",
-    "https://tenor.com/fr/view/financial-advisor-jet760-says-no-financial-advisor-gif-13070262923158806499.gif",
-    "https://tenor.com/fr/view/cat-money-hit-cute-gif-21672589.gif",
-    "https://tenor.com/fr/view/cat-finance-financial-advisor-cute-cute-cat-gif-304932396169847213.gif",
-    "https://tenor.com/fr/view/zoratsaiyt-zoradraws-acctandsec-會計-秘書-gif-25086834.gif",
-    "https://tenor.com/fr/view/tenset-10set-cat-clock-gif-11918755868618435360.gif",
-    "https://tenor.com/fr/view/lazy-cat-waiting-bored-kitten-gif-18187747.gif",
-    "https://tenor.com/fr/view/sure-cat-nail-file-gif-17863326.gif",
-    "https://tenor.com/fr/view/stillwaiting-mad-waitingforyou-kitten-waiting-gif-20072807.gif",
-    "https://tenor.com/fr/view/cat-waiting-kicking-stare-gif-26949820.gif",
-    "https://tenor.com/fr/view/tired-cat-texting-in-bed-me-in-bed-gif-14635242.gif",
-    "https://tenor.com/fr/view/cat-cat-meme-meme-cat-clean-screen-gif-15152740950488033203.gif"]
-    gif_url = np.random.choice(gif_list)
-    gif_placeholder = st.empty()
-
     with st.spinner("La recherche du modèle optimal pour chaque entreprise peut durer quelques temps. Merci de patienter !"):
-        gif_placeholder.image(gif_url, width=300)
         # Calculer les rendements quotidiens
         df_list = []
         for ticker in df['Ticker'].unique():
@@ -949,7 +931,6 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
         
         st.write("Veuillez trouver ci-dessous le résumé du respect des hypothèses statistiques associées à chaque modèle.")
         st.dataframe(model_val_df)
-        gif_placeholder.empty()
         progress_bar.empty()
         status_text.empty()
     
