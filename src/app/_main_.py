@@ -1,21 +1,23 @@
+# Imports standards
+from datetime import datetime, timedelta
+import math
+from itertools import combinations
 import numpy as np
 import pandas as pd
-import streamlit as st
-import yfinance as yf
+import scipy.stats as stats
+import statsmodels.api as sm
+from statsmodels.stats.stattools import jarque_bera
+from statsmodels.stats.diagnostic import acorr_ljungbox, het_arch
+from sklearn.model_selection import ParameterGrid
+from arch import arch_model
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.graph_objects as go
 import mplfinance as mpf
-from datetime import datetime, timedelta
-from itertools import combinations
+import yfinance as yf
+import streamlit as st
 from joblib import Parallel, delayed
-import statsmodels.api as sm
-from statsmodels.stats.stattools import jarque_bera
-from statsmodels.stats.diagnostic import acorr_ljungbox, het_arch
-from scipy.stats import skew, jarque_bera, shapiro, ttest_1samp, norm
-from arch import arch_model
-import math
-from sklearn.model_selection import ParameterGrid
+
 
 def import_data(index, start_date, end_date):
     """
