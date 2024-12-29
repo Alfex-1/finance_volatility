@@ -4,7 +4,7 @@ import math
 from itertools import combinations
 import numpy as np
 import pandas as pd
-import scipy.stats as stats
+from scipy.stats import skew, jarque_bera, shapiro, ttest_1samp, norm
 import statsmodels.api as sm
 from statsmodels.stats.stattools import jarque_bera
 from statsmodels.stats.diagnostic import acorr_ljungbox, het_arch
@@ -17,7 +17,6 @@ import mplfinance as mpf
 import yfinance as yf
 import streamlit as st
 from joblib import Parallel, delayed
-
 
 def import_data(index, start_date, end_date):
     """
