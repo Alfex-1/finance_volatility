@@ -407,8 +407,6 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
         margin=dict(l=40, r=40, t=40, b=80))
     st.plotly_chart(fig, use_container_width=False)
 
-
-    
 def mean_dist(hyp_df, data, kurtosis, skewness):
     """
     Détermine la spécification de la moyenne et de la distribution d'un modèle basé sur les hypothèses
@@ -416,8 +414,12 @@ def mean_dist(hyp_df, data, kurtosis, skewness):
 
     Args:
         hyp_df (pd.DataFrame): DataFrame contenant les résultats des tests d'hypothèses pour les résidus,
-                                notamment la vérification de l'autocorrélation des résidus et leur carré.
-        train (array-like): Série temporelle d'entraînement utilisée pour le test de la moyenne. 
+                                notamment la vérification de l'autocorrélation des résidus, leur carré,
+                                et la normalité des résidus. Ce DataFrame doit avoir les colonnes suivantes :
+                                - 'Hypothèse' : nom des hypothèses (ex. 'Autocorrélation des résidus')
+                                - 'Respect' : résultats des tests (1 pour respecté, 0 pour non respecté)
+                                - 'P-Value' : p-value des tests (si applicable).
+        data (array-like): Série temporelle d'entraînement utilisée pour le test de la moyenne. 
                             Un test de moyenne nulle (t-test) est effectué pour déterminer si la moyenne 
                             est significativement différente de zéro.
         kurtosis (float): La kurtose des résidus de la série temporelle, mesurant l'aplatissement de la distribution.
@@ -430,15 +432,17 @@ def mean_dist(hyp_df, data, kurtosis, skewness):
             - 'HAR' si une autocorrélation des résidus au carré est détectée en plus de l'autocorrélation des résidus.
             - 'Constant' si aucune des conditions précédentes n'est remplie.
         dist (str): La distribution des résidus du modèle choisie en fonction de la kurtose et de l'asymétrie :
-            - 'ged' si la kurtose est significativement différente de 3 et l'asymétrie est forte.
-            - 't' si la kurtose est significativement différente de 3 et l'asymétrie est faible.
-            - 'skewt' si la kurtose est proche de 3 et l'asymétrie est significative.
-            - 'normal' si la kurtose est proche de 3 et l'asymétrie est faible.
+            - 'ged' si la kurtose est proche de 0 et l'asymétrie est faible.
+            - 't' si la kurtose est significativement différente de 0 et l'asymétrie est faible.
+            - 'skewt' l'asymétrie est significative, peu importe la kurtose.
+            - 'normal' si la p-value du test est inférieure à 10%.
     """
     # Détermination de la moyenne
     _, p_value_ttest = ttest_1samp(data, popmean=0)
     autocorr_resid = hyp_df.loc[hyp_df['Hypothèse'] == 'Autocorrélation des résidus', 'Respect'].values[0]
     autocorr_resid_squared = hyp_df.loc[hyp_df['Hypothèse'] == 'Autocorrélation des résidus au carré', 'Respect'].values[0]
+    pvalue_normal = hyp_df.loc[hyp_df['Hypothèse'] == 'Normalité des résidus', 'P-Value'].values[0]
+    kurtosis, skewness = round(kurtosis,3), round(skewness,3)
     
     if autocorr_resid == 0:  # Autocorrélation des résidus présente
         if autocorr_resid_squared == 1:
@@ -452,15 +456,14 @@ def mean_dist(hyp_df, data, kurtosis, skewness):
             mean = 'Constant'
 
     # Détermination de la distribution
-    diff_kurt = abs(kurtosis-3)
-    if hyp_df.loc[hyp_df['Hypothèse'] == 'Normalité des résidus', 'P-Value'].values[0] > 0.01:
+    if pvalue_normal > 0.01:
         dist='normal'
     else:
-        if diff_kurt >= 0.3 and abs(skewness) >= 0.3:
+        if (kurtosis >= 1.1 or kurtosis <= -0.6) and abs(skewness) >= 0.3:
             dist='skewt'
-        elif diff_kurt >= 0.3 and abs(skewness) < 0.3:
+        elif (kurtosis >= 1.1 or kurtosis <= -0.6) and abs(skewness) < 0.3:
             dist = 't'
-        elif diff_kurt < 0.3 and abs(skewness) >= 0.3:
+        elif (kurtosis <= 1.1 and kurtosis >= -0.6) and abs(skewness) >= 0.3:
             dist = 'skewt'
         else:
             dist='ged'
@@ -826,7 +829,7 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
                 mean_t ='Constant'
             
             # Recherche des meilleurs hyperparamètres
-            p, q, _ = ARCH_search(train, p_max=10, q_max=10, vol='GARCH', mean=mean_t, criterion='aic')
+            p, q, _ = ARCH_search(train, p_max=9, q_max=9, vol='GARCH', mean=mean_t, criterion='aic')
             
             current_step += 1
             progress_bar.progress(current_step / total_steps)
@@ -869,7 +872,7 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
         
                 # Recherche des meilleurs hyperparamètres
                 if mean == 'AR':
-                    p, q, lag = ARCH_search(train, p_max=10, q_max=10, vol='GARCH', mean=mean, dist=dist, criterion='aic')
+                    p, q, lag = ARCH_search(train, p_max=9, q_max=9, vol='GARCH', mean=mean, dist=dist, criterion='aic')
                     
                     # Construction du meilleur modèle selon le critère d'information
                     model = arch_model(train, vol='GARCH', p=p, q=q, mean=mean, dist=dist, lags=lag,  rescale=False)
