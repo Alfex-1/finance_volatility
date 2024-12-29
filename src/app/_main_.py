@@ -475,8 +475,8 @@ def mean_dist(hyp_df, data, kurtosis, skewness):
 st.title("Analyse des prix et des rendements des actions de plusieurs entreprises et prédiction des risques associés")
 st.subheader("Auteur : BRUNET Alexandre")
 st.write(
-    ("Bienvenue sur l'application dans laquelle vous pouvez visualiser le prix des actions des entreprises ainsi que leurs rendements quotidiens. "
-     "Vous pouvez égalemet choisir de visualiser les prédictions des risques (la volatilité) liés à aux investissements des actions des entreprises, sur le court terme.")
+    ("Bienvenue sur l'application ! Vous pouvez y visualiser le prix des actions des entreprises ainsi que leurs rendements quotidiens. "
+     "Vous avez également la possibilité de consulter les prédictions des risques (volatilité) associés aux investissements dans les actions de ces entreprises, à court terme.")
 )
 
 # Lien pour voir la documentation

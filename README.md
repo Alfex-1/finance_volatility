@@ -14,7 +14,7 @@ Les conditions préalables pour exploiter efficacement ce projet varient selon l
 
 ### Utilisation des codes utilisés pour tester l'application (optionnel) :
 
-1. **Installation de Python :** Pour utiliser notre algorithme, veuillez installer Python dans sa version 3.12.6.  Vous pouvez la télécharger  sur [python.org](https://www.python.org/).
+**Installation de Python :** Pour utiliser notre algorithme, veuillez installer Python dans sa version 3.12.6.  Vous pouvez la télécharger  sur [python.org](https://www.python.org/).
    
 ## Structure du dépôt 
 
@@ -43,6 +43,8 @@ Pour tester d'autres configurations de modèles, vous pouvez d'abord exécuter l
 
 ## L'application 
 
-Pour utiliser l'application, vous devez d'abord choisir entre une analyse visuelle ou des prédictions, puis sélectionner les entreprises (maximum 4).
+Pour utiliser l'application, vous devez d'abord choisir entre une analyse visuelle ou des prédictions, puis sélectionner les entreprises (maximum 4). 
+
 Pour l'analyse visuelle, vous devez choisir la période souhaitée (date de début et de fin). Attention : il est probable que les dernières dates ne soient pas disponibles, notamment si vous incluez la date d'aujourd'hui, car il n'y a pas encore de données pour le jour même, mais elles seront disponibles plus tard. Une fois la période définie, il vous suffit de cliquer sur "Lancer".
+
 Pour les prédictions, vous n'avez pas besoin de sélectionner une date de début, car celle-ci sera automatiquement fixée à un an et demi avant la date de fin choisie. Vous pouvez également choisir de visualiser les performances des modèles (attention, cela peut prendre quelques instants). Ensuite, pour les prédictions, vous pourrez spécifier l'horizon temporel, c'est-à-dire le nombre de jours sur lesquels vous souhaitez faire des prédictions, ainsi que le niveau de certitude associé. À noter : plus le niveau de certitude se rapproche de 100%, plus les intervalles de confiance seront visuellement éloignés des valeurs prédites. Enfin, il ne vous reste plus qu'à cliquer sur "Lancer".
