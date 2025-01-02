@@ -44,7 +44,7 @@ def import_data(index, start_date, end_date):
         if df.empty:  # Vérification si le DataFrame est vide (aucune donnée disponible)
             st.warning(f"Aucune donnée disponible pour {ticker} entre {start_date} et {end_date}. Il sera retiré de l'analyse.")
         else:
-            df = df.stack(level=1).reset_index()
+            df = df.stack(level=1, future_stack=True).reset_index()
             df.rename(columns={"level_1": "Ticker"}, inplace=True)
 
             df['Date'] = pd.to_datetime(df['Date'])
@@ -505,7 +505,7 @@ st.write(
 )
 
 # Lien pour voir la documentation
-st.link_button("Voir la documentation", "https://github.com/Alfex-1/finance_volatility")
+st.link_button("Voir la documentation", "https://github.com/Alfex-1/finance_volatility/blob/main/docs/Documentation.pdf")
 
 # Case à cocher pour "Analyse" et "Prédiction"
 option = st.radio("Choisissez le type d'étude que vous voulez mener", ["Analyse", "Prédiction"])
@@ -941,7 +941,7 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
                     'Ordre q': q,
                     'Moyenne': mean,
                     "Distribution d'erreur": dist,
-                    'Retard' : lag if (mean == 'AR' or mean == 'HAR')  else "Aucun"
+                    'Retard' : str(lag) if (mean == 'AR' or mean == 'HAR')  else "Aucun"
                 })
                     
                 # Ajouter les informations sur le respect des hypothèses

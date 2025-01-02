@@ -1,8 +1,8 @@
 # Importation
-start_date='2023-06-01'
+start_date='2022-06-01'
 end_date='2024-01-01'
 # df = import_data(["AAPL", "MSFT", "GOOG","META"], start_date, end_date)
-df = import_data(["MSFT"], start_date, end_date)
+df = import_data(["AAPL", "MSFT"], start_date, end_date)
 
 # Interpolation des données manquantes
 df = interpolate(df, start_date=start_date, end_date=end_date).dropna()
@@ -86,7 +86,7 @@ for col in df_pivot.columns:
 
         else:
             lag = None
-            p, q, _ = ARCH_search(train, p_max=10, q_max=10, vol='GARCH', mean=mean, dist=dist, criterion='aic')
+            p, q, _ = ARCH_search(train, p_max=9, q_max=9, vol='GARCH', mean=mean, dist=dist, criterion='aic')
         
             # Construction du meilleur modèle selon le critère d'information
             model = arch_model(train, vol='GARCH', p=p, q=q, mean=mean, dist=dist, rescale=False)
