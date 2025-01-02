@@ -1,4 +1,4 @@
-# Imports standards
+# Imports
 from datetime import datetime, timedelta
 import math
 from itertools import combinations
@@ -87,7 +87,7 @@ def interpolate(df, start_date, end_date):
         df_ticker = df_ticker.reindex(new_dates)
         
         # Interpoler les valeurs manquantes pour ce Ticker
-        df_ticker = df_ticker.interpolate(method='polynomial', order=2)
+        df_ticker = df_ticker.interpolate(method='quadratic', limit_direction='both')
         df_ticker['Ticker'] = ticker
         
         # Ajouter le DataFrame interpolé à la liste
@@ -102,73 +102,100 @@ def interpolate(df, start_date, end_date):
     
     return df
 
-def fit_model(params, data, mean, dist, vol, o, lags, criterion):
-    """
-    Ajuste un modèle GARCH aux données et retourne le critère d'information spécifié (AIC ou BIC) pour évaluer la qualité de l'ajustement.
+def fit_model(data, p, q, o, lags, mean, dist, vol):
+    """Ajuste un modèle ARCH/GARCH à une série temporelle avec des paramètres donnés.
+
+    Cette fonction crée un modèle ARCH ou GARCH (ou ses variantes comme AR ou HAR), ajuste le modèle sur les données
+    passées en argument, et retourne les valeurs de AIC et BIC pour évaluer la qualité de l'ajustement.
 
     Args:
-        params (dict): Dictionnaire contenant les paramètres du modèle GARCH, avec les clés 'p' et 'q' représentant respectivement l'ordre de l'auto-régression (AR) et de la moyenne mobile (MA).
-        data (pd.Series): Série temporelle des données sur lesquelles ajuster le modèle GARCH. Les valeurs manquantes seront ignorées.
-        mean (str): Spécification du modèle de la moyenne (par exemple, 'Constant', 'AR', 'Zero', etc.).
-        dist (str): Distribution des résidus du modèle (par exemple, 'Normal', 'StudentsT', etc.).
-        vol (str): Spécification du modèle de volatilité (par exemple, 'GARCH', 'EGARCH', etc.).
-        o (int): Ordre de l'innovation (spécifique à certains modèles comme l'EGARCH).
-        lags (int): Nombre de décalages (lags) à inclure dans le modèle GARCH pour tenir compte de l'historique des données.
-        criterion (str): Le critère d'évaluation à retourner ('aic' pour le critère d'information d'Akaike ou 'bic' pour le critère d'information bayésien).
+        data (pd.Series): Série temporelle des données financières à ajuster.
+        p (int): Ordre de l'élément ARCH du modèle (nombre de retards dans la variance conditionnelle).
+        q (int): Ordre de l'élément GARCH du modèle (nombre de retards dans l'erreur au carré).
+        o (int): Ordre de l'élément GJRGARCH ou autre forme (optionnel, 0 par défaut).
+        lags (list or None): Liste des lags à utiliser pour le modèle AR ou HAR, ou None si non applicable.
+        mean (str): Type de moyenne à utiliser dans le modèle. Peut être 'Constant', 'AR' (autoregressive), ou 'HAR' (Heterogeneous Autoregressive).
+        dist (str): Distribution des résidus du modèle. Par défaut, 'normal' mais peut être 't' ou autre.
+        vol (str): Type de modèle de volatilité. Par défaut, 'GARCH' mais peut aussi être 'EGARCH', 'FIGARCH', etc.
 
     Returns:
-        dict: Dictionnaire contenant les valeurs des paramètres 'p' et 'q', le nombre de lags, et le critère spécifié ('AIC' ou 'BIC') du modèle ajusté.
+        tuple: Tuple contenant les paramètres p, q, lags, ainsi que les critères d'ajustement AIC et BIC.
+            - p (int): Ordre de l'élément ARCH utilisé dans le modèle.
+            - q (int): Ordre de l'élément GARCH utilisé dans le modèle.
+            - lags (list or None): Liste des lags utilisés dans le modèle AR ou HAR.
+            - AIC (float): Critère d'information d'Akaike (Akaike Information Criterion).
+            - BIC (float): Critère d'information bayésien (Bayesian Information Criterion).
     """
-    p, q = params['p'], params['q']
-    if mean == 'AR':
-        model = arch_model(data.dropna(), mean=mean, dist=dist, vol=vol, p=p, q=q, o=o, lags=lags)
-    else:
-        model = arch_model(data.dropna(), mean=mean, dist=dist, vol=vol, p=p, q=q, o=o)
-    
-    model_fit = model.fit(disp='off', options={'maxiter': 750})
-    
-    # Retourner uniquement le critère spécifié (AIC ou BIC)
-    if criterion == 'aic':
-        return {'p': p, 'q': q, 'lags': lags, 'AIC': model_fit.aic}
-    elif criterion == 'bic':
-        return {'p': p, 'q': q, 'lags': lags, 'BIC': model_fit.bic}
+    try:
+        # Création du modèle en fonction des paramètres
+        if mean == 'AR':
+            model = arch_model(data.dropna(), mean=mean, dist=dist, vol=vol, p=p, q=q, o=o, lags=lags)
+        elif mean == 'HAR':
+            lags = [1, 5, 22]  # HAR fixe les lags
+            model = arch_model(data.dropna(), mean=mean, dist=dist, vol=vol, p=p, q=q, o=o, lags=lags)
+        else:
+            model = arch_model(data.dropna(), mean=mean, dist=dist, vol=vol, p=p, q=q, o=o)
 
-def ARCH_search(data, p_max, q_max, o=0, vol='GARCH', mean='Constant', dist='normal', criterion='aic'):
-    """
-    Recherche le meilleur modèle ARCH/GARCH en utilisant une grille de recherche pour les paramètres p et q.
-    Le modèle optimal est sélectionné en fonction du critère spécifié (AIC ou BIC).
+        # Ajuster le modèle
+        model_fit = model.fit(disp='off', options={'maxiter': 750})
+
+        return p, q, lags, model_fit.aic, model_fit.bic
+
+    except Exception as e:
+        print(f"Error in fitting model for p={p}, q={q}, lags={lags}: {e}")
+        return p, q, lags, None, None  # Retourner des valeurs par défaut en cas d'erreur
+
+def ARCH_search(data, p_max, q_max, o=0, lags_max=7, vol='GARCH', mean='Constant', dist='normal', criterion='aic'):
+    """Effectue une recherche exhaustive des meilleurs paramètres pour un modèle ARCH/GARCH sur les données.
+
+    Cette fonction crée une grille de recherche pour les paramètres du modèle ARCH/GARCH (ordre p, q, et lags),
+    ajuste plusieurs modèles avec différentes combinaisons de ces paramètres, puis sélectionne le modèle avec 
+    le meilleur critère d'information (AIC ou BIC).
 
     Args:
-        data (pd.Series): Séries temporelles des données sur lesquelles ajuster le modèle ARCH/GARCH.
-        p_max (int): Valeur maximale de l'ordre p pour le modèle GARCH (nombre de termes d'autorégression).
-        q_max (int): Valeur maximale de l'ordre q pour le modèle GARCH (nombre de termes de moyenne mobile).
-        o (int, optional): Ordre de l'innovation pour les modèles comme FIGARCH. Par défaut, 0.
-        vol (str, optional): Modèle de volatilité à utiliser (par exemple, 'GARCH', 'FIGARCH', 'EGARCH'). Par défaut, 'GARCH'.
-        mean (str, optional): Type de modèle pour la moyenne (par exemple, 'Constant', 'AR', etc.). Par défaut, 'Constant'.
-        dist (str, optional): Distribution des résidus du modèle (par exemple, 'normal', 't', etc.). Par défaut, 'normal'.
-        criterion (str, optional): Critère à utiliser pour sélectionner le meilleur modèle ('aic' ou 'bic'). Par défaut, 'aic'.
+        data (pd.Series): Série temporelle des données à ajuster avec le modèle ARCH/GARCH.
+        p_max (int): Valeur maximale de l'ordre p pour le modèle ARCH.
+        q_max (int): Valeur maximale de l'ordre q pour le modèle GARCH.
+        o (int, optional): Ordre de l'élément GJRGARCH ou autre forme (par défaut, 0). 
+        lags_max (int, optional): Valeur maximale pour l'ordre des lags dans le modèle AR ou HAR (par défaut, 7).
+        vol (str, optional): Type de modèle de volatilité, 'GARCH' par défaut mais peut aussi être 'ARCH', 'FIGARCH', etc.
+        mean (str, optional): Type de moyenne à utiliser dans le modèle. Par défaut, 'Constant' mais peut être 'AR' ou 'HAR'.
+        dist (str, optional): Type de distribution des résidus, 'normal' par défaut mais peut être 't' ou d'autres.
+        criterion (str, optional): Critère de sélection du modèle. Par défaut, 'aic' mais peut aussi être 'bic'.
 
     Returns:
-        tuple: Un tuple contenant les meilleurs ordres p et q du modèle GARCH sélectionné en fonction du critère.
+        tuple: Tuple contenant les meilleurs paramètres trouvés pour le modèle.
+            - p (int): Ordre de l'élément ARCH (p).
+            - q (int): Ordre de l'élément GARCH (q).
+            - lags (list or None): Liste des lags utilisés dans le modèle AR ou HAR.
     """
     p_range = range(1, p_max + 1) if vol != 'FIGARCH' else [0, 1]
     q_range = range(1, q_max + 1) if vol != 'FIGARCH' else [0, 1]
-    lags_range = range(1, 8)
+    lags_range = range(1, lags_max + 1)
+
+    # Définir la grille de paramètres
     param_grid = {'p': p_range, 'q': q_range, 'lags': lags_range}
     grid = ParameterGrid(param_grid)
 
-    # Exécution parallèle en fonction du critère choisi
-    results = Parallel(n_jobs=-1)(delayed(fit_model)(params, data, mean, dist, vol, o, params['lags'], criterion) for params in grid)
-    
-    # Convertir en DataFrame et trier
-    results_df = pd.DataFrame(results)
+    # Utilisation de joblib pour paralléliser le calcul
+    results = Parallel(n_jobs=-1)(  # -1 utilise tous les cœurs disponibles
+        delayed(fit_model)(data, params['p'], params['q'], o, params['lags'] if mean in ['AR', 'HAR'] else None, mean, dist, vol)
+        for params in grid
+    )
+
+    # Convertir les résultats en DataFrame
+    results_df = pd.DataFrame(results, columns=['p', 'q', 'lags', 'AIC', 'BIC'])
+
+    # Trier les résultats par le critère spécifié
     results_df = results_df.sort_values(by=criterion.upper()).reset_index(drop=True)
-    
-    p = int(results_df.head(1).iloc[0].values[0])
-    q = int(results_df.head(1).iloc[0].values[1])
-    lag = int(results_df.head(1).iloc[0].values[2])
-    
-    return p, q, lag
+
+    # Extraire les meilleurs paramètres
+    best_params = results_df.iloc[0]
+    p = int(best_params['p'])
+    q = int(best_params['q'])
+    lags = best_params['lags']
+
+    return p, q, lags
 
 def model_validation(model):
     """
@@ -292,7 +319,7 @@ def rolling_pred(real_values, test_size, vol, p, q, mean, dist, lag, col):
         q (int): Ordre du processus GARCH.
         mean (str): Modèle de la moyenne à utiliser ('Constant', 'Zero', etc.).
         dist (str): Distribution à utiliser pour les résidus ('normal', 't', 'skewt', etc.).
-        lag (int): Nombre de décalages (lags) à utiliser pour le modèle, nécessaire si le modèle de moyenne est 'AR'.
+        lag (int): Nombre de décalages (lags) à utiliser pour le modèle, nécessaire si le modèle de moyenne est 'AR' ou 'HAR'.
         col (str): Nom de la colonne associée à la série temporelle.
     
     Displays:
@@ -377,7 +404,6 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
     z_score = round(norm.ppf((1 + conf_level) / 2),3)
     conf_int_lower = np.sqrt(np.maximum(variance_values - z_score * np.sqrt(variance_values), 0)).round(3)
     conf_int_upper = np.sqrt(pred.variance.values[-1, :] + z_score * np.sqrt(pred.variance.values[-1, :])).round(3)
-
 
     # Création du graphique interactif avec Plotly
     fig = go.Figure()
@@ -876,11 +902,17 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
                     p, q, lag = ARCH_search(train, p_max=9, q_max=9, vol='GARCH', mean=mean, dist=dist, criterion='aic')
                     
                     # Construction du meilleur modèle selon le critère d'information
-                    model = arch_model(train, vol='GARCH', p=p, q=q, mean=mean, dist=dist, lags=lag,  rescale=False)
+                    model = arch_model(train, vol='GARCH', p=p, q=q, mean=mean, dist=dist, lags=lag, rescale=False)
 
-                
+                elif mean == 'HAR':
+                    lag = [1,5,22]
+                    p, q, _ = ARCH_search(train, p_max=9, q_max=9, vol='GARCH', mean=mean, dist=dist, criterion='aic')
+
+                    # Construction du meilleur modèle selon le critère d'information
+                    model = arch_model(train, vol='GARCH', p=p, q=q, mean=mean, dist=dist, lags=lag, rescale=False)
+
                 else:
-                    lag=None
+                    lag = None
                     p, q, _ = ARCH_search(train, p_max=10, q_max=10, vol='GARCH', mean=mean, dist=dist, criterion='aic')
                 
                     # Construction du meilleur modèle selon le critère d'information
@@ -909,7 +941,7 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
                     'Ordre q': q,
                     'Moyenne': mean,
                     "Distribution d'erreur": dist,
-                    'Retard' : "Aucun" if mean != 'AR' else lag
+                    'Retard' : lag if (mean == 'AR' or mean == 'HAR')  else "Aucun"
                 })
                     
                 # Ajouter les informations sur le respect des hypothèses
