@@ -10,3 +10,6 @@ yfinance
 mplfinance
 plotly
 joblib
+lxml
+html5lib
+beautifulsoup4

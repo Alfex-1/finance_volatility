@@ -16,6 +16,7 @@ import plotly.graph_objects as go
 import mplfinance as mpf
 import yfinance as yf
 import streamlit as st
+import requests
 from joblib import Parallel, delayed
 
 def import_data(index, start_date, end_date):
@@ -512,7 +513,8 @@ option = st.radio("Choisissez le type d'étude que vous voulez mener", ["Analyse
 
 # Entreprises
 url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-tables = pd.read_html(url)
+response = requests.get(url)
+tables = pd.read_html(response.text)
 sp500_df = tables[0]
 tickers = sp500_df[['Symbol', 'Security']]
 ticker_to_name = dict(zip(tickers['Symbol'], tickers['Security']))
