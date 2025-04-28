@@ -3,12 +3,11 @@ numpy
 pandas
 scipy
 statsmodels
-sklearn
+scikit-learn
 arch
 matplotlib
 seaborn
 plotly
-mplfinance
 yfinance
 streamlit
 requests
