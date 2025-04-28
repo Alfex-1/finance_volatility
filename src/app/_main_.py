@@ -1,23 +1,20 @@
-# Imports
 from datetime import datetime, timedelta
 import math
 from itertools import combinations
 import numpy as np
 import pandas as pd
-from scipy.stats import skew, jarque_bera, shapiro, ttest_1samp, norm
-import statsmodels.api as sm
-from statsmodels.stats.stattools import jarque_bera
+from scipy.stats import shapiro, ttest_1samp, norm
 from statsmodels.stats.diagnostic import acorr_ljungbox, het_arch
 from sklearn.model_selection import ParameterGrid
 from arch import arch_model
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.graph_objects as go
-import mplfinance as mpf
 import yfinance as yf
 import streamlit as st
 import requests
 from joblib import Parallel, delayed
+from io import StringIO
 
 def import_data(index, start_date, end_date):
     """
@@ -40,7 +37,7 @@ def import_data(index, start_date, end_date):
 
     for ticker in index:
         # Téléchargement des données pour chaque ticker
-        df = yf.download(ticker, start=start_date, end=end_date, progress=False)
+        df = yf.download(ticker, start=start_date, end=end_date, interval="1d", progress=False, repair=True, ignore_tz=True, rounding=False, session=None, auto_adjust=True)
         
         if df.empty:  # Vérification si le DataFrame est vide (aucune donnée disponible)
             st.warning(f"Aucune donnée disponible pour {ticker} entre {start_date} et {end_date}. Il sera retiré de l'analyse.")
@@ -511,15 +508,26 @@ st.link_button("Voir la documentation", "https://github.com/Alfex-1/finance_vola
 # Case à cocher pour "Analyse" et "Prédiction"
 option = st.radio("Choisissez le type d'étude que vous voulez mener", ["Analyse", "Prédiction"])
 
-# Entreprises
-url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-response = requests.get(url)
-tables = pd.read_html(response.text)
-sp500_df = tables[0]
-tickers = sp500_df[['Symbol', 'Security']]
-ticker_to_name = dict(zip(tickers['Symbol'], tickers['Security']))
+# Récupération des entreprises européennes (exemple pour le CAC40)
+url_cac40 = "https://en.wikipedia.org/wiki/CAC_40"
+response_cac40 = requests.get(url_cac40)
+html_content_cac40 = StringIO(response_cac40.text)
+tables_cac40 = pd.read_html(html_content_cac40)
+cac40_df = tables_cac40[4]
+tickers_cac40 = cac40_df[['Ticker', 'Company']]
+
+url_sp500 = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+response_sp500 = requests.get(url_sp500)
+html_content_sp500 = StringIO(response_sp500.text)
+tables_sp500 = pd.read_html(html_content_sp500)
+sp500_df = tables_sp500[0]
+tickers_sp500 = sp500_df[['Symbol', 'Security']].rename(columns={'Symbol': 'Ticker', 'Security': 'Company'})
+
+all_tickers = pd.concat([tickers_sp500, tickers_cac40], ignore_index=True)
+ticker_to_name = dict(zip(all_tickers['Ticker'], all_tickers['Company']))
+
 selected_companies = st.multiselect("Choisissez les entreprises à analyser", 
-                                    tickers['Security'].tolist(),
+                                    all_tickers['Company'].tolist(),
                                     max_selections=4)
 
 start_date = None
@@ -538,7 +546,7 @@ if option == "Analyse" and len(selected_companies) >=1:
     start_date = st.date_input("Sélectionnez la date à partir de laquelle les analyses débuteront", value=default_start_date.date())
     end_date = st.date_input("Sélectionnez la date à partir de laquelle les analyses se finiront", value=default_end_date.date())    
 
-    selected_tickers = tickers[tickers['Security'].isin(selected_companies)]['Symbol'].tolist()
+    selected_tickers = all_tickers[all_tickers['Company'].isin(selected_companies)]['Ticker'].tolist()
     
     df = import_data(selected_tickers, start_date, end_date)
     
@@ -578,7 +586,7 @@ elif option == "Prédiction" and len(selected_companies) >=1:
     # Choisir l'horizon des prédictions
     horizon = st.slider("Choisissez l'horizon des prédictions (en jours)", min_value=2, max_value=15, value=7)    
 
-    selected_tickers = tickers[tickers['Security'].isin(selected_companies)]['Symbol'].tolist()
+    selected_tickers = all_tickers[all_tickers['Company'].isin(selected_companies)]['Ticker'].tolist()
     df = import_data(selected_tickers, start_date, end_date)
     
     if df is None:

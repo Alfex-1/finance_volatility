@@ -1,20 +1,16 @@
+from datetime import timedelta
 import numpy as np
 import pandas as pd
-import yfinance as yf
-import matplotlib.pyplot as plt
-import seaborn as sns
-import plotly.graph_objects as go
-import mplfinance as mpf
-from datetime import datetime, timedelta
-from itertools import combinations
-from joblib import Parallel, delayed
-import statsmodels.api as sm
-from statsmodels.stats.stattools import jarque_bera
+from scipy.stats import shapiro, ttest_1samp, norm
 from statsmodels.stats.diagnostic import acorr_ljungbox, het_arch
-from scipy.stats import skew, jarque_bera, shapiro, ttest_1samp, norm
-from arch import arch_model
-import math
 from sklearn.model_selection import ParameterGrid
+from arch import arch_model
+import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+import yfinance as yf
+import requests
+from joblib import Parallel, delayed
+from io import StringIO
 
 def import_data(index, start_date, end_date):
     """
@@ -37,7 +33,7 @@ def import_data(index, start_date, end_date):
 
     for ticker in index:
         # Téléchargement des données pour chaque ticker
-        df = yf.download(ticker, start=start_date, end=end_date, progress=False)
+        df = yf.download(ticker, start=start_date, end=end_date, interval="1d", repair=True, ignore_tz=True, rounding=False, session=None, auto_adjust=True)
         
         if df.empty:  # Vérification si le DataFrame est vide (aucune donnée disponible)
             print(f"Aucune donnée disponible pour {ticker} entre {start_date} et {end_date}. Il sera retiré de l'analyse.")
@@ -492,6 +488,24 @@ def mean_dist(hyp_df, data, kurtosis, skewness):
             dist='ged'
 
     return str(mean), str(dist)
+
+# Récupération des entreprises européennes (exemple pour le CAC40)
+url_cac40 = "https://en.wikipedia.org/wiki/CAC_40"
+response_cac40 = requests.get(url_cac40)
+html_content_cac40 = StringIO(response_cac40.text)
+tables_cac40 = pd.read_html(html_content_cac40)
+cac40_df = tables_cac40[4]
+tickers_cac40 = cac40_df[['Ticker', 'Company']]
+
+url_sp500 = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+response_sp500 = requests.get(url_sp500)
+html_content_sp500 = StringIO(response_sp500.text)
+tables_sp500 = pd.read_html(html_content_sp500)
+sp500_df = tables_sp500[0]
+tickers_sp500 = sp500_df[['Symbol', 'Security']].rename(columns={'Symbol': 'Ticker', 'Security': 'Company'})
+
+all_tickers = pd.concat([tickers_sp500, tickers_cac40], ignore_index=True)
+ticker_to_name = dict(zip(all_tickers['Ticker'], all_tickers['Company']))
 
 # Importation
 start_date='2022-06-01'
