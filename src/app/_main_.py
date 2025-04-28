@@ -78,7 +78,7 @@ def interpolate(df, start_date, end_date):
     for ticker in df['Ticker'].unique():
         # Filtrer le DataFrame pour le Ticker actuel
         df_ticker = df[df['Ticker'] == ticker].copy()
-        del df_ticker['Ticker']
+        df_ticker = df_ticker.drop(columns=['Ticker', 'Repaired?'])
         
         # Réindexer pour ajouter toutes les dates manquantes (fréquence journalière)
         new_dates = pd.date_range(start=start_date, end=end_date, freq='D')
@@ -405,24 +405,23 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
 
     # Création du graphique interactif avec Plotly
     fig = go.Figure()
+    fig.add_trace(go.Scatter(x=future_dates, y=predicted_volatility, mode='lines', name='Volatilité Prédite', line=dict(color='red')))
+    
+    # Remplissage pour la région de confiance
     fig.add_trace(go.Scatter(
-        x=future_dates, y=conf_int_upper, mode='lines', name=f'Limite supérieure ({int(conf_level*100)}%)', line=dict(color='red', dash='dash')
-    ))
-    fig.add_trace(go.Scatter(
-        x=future_dates, y=predicted_volatility, mode='lines', name=f'Volatilité prédite', line=dict(color='orange')
-    ))
-    fig.add_trace(go.Scatter(
-        x=future_dates, y=conf_int_lower, mode='lines', name=f'Limite inférieure ({int(conf_level*100)}%)', line=dict(color='yellow', dash='dash')
-    ))
+        x=future_dates + future_dates[::-1],  # Concatenate future dates with reversed ones
+        y=np.concatenate([conf_int_upper, conf_int_lower[::-1]]),  # Upper and lower bounds
+        fill='toself',
+        fillcolor='rgba(0, 0, 255, 0.3)',
+        line=dict(color='rgba(0, 0, 0, 0)'),
+        name=f'Région de confiance au niveau {int(conf_level*100)}%'))   
+    
+    # Personnalisation du graphique
     fig.update_layout(
         legend=dict(traceorder='normal'),
-        title=f'Prédiction de la volatilité des actions {col} pour les {horizon} prochains jours',
+        title=f"Prévision de la Volatilité pour {col}",
         xaxis_title=None,
-        yaxis_title='Volatilité prédite (en %)',
-        xaxis=dict(
-            tickformat='%d-%m-%Y', 
-            tickangle=45
-        ),
+        yaxis_title="Volatilité prédite (en %)",
         yaxis=dict(range=[conf_int_lower.min()+0.1, conf_int_upper.max()+0.1],
                    autorange=False),
         template="seaborn",
@@ -430,7 +429,19 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
         title_x=0.1,
         autosize=True,
         margin=dict(l=40, r=40, t=40, b=80))
+    
     st.plotly_chart(fig, use_container_width=False)
+    
+
+#     fig.add_trace(go.Scatter(
+#     x=future_dates, y=conf_int_upper, mode='lines', name=f'Limite supérieure ({int(conf_level*100)}%)', line=dict(color='red', dash='dash')
+# ))
+# fig.add_trace(go.Scatter(
+#     x=future_dates, y=predicted_volatility, mode='lines', name=f'Volatilité prédite', line=dict(color='orange')
+# ))
+# fig.add_trace(go.Scatter(
+#     x=future_dates, y=conf_int_lower, mode='lines', name=f'Limite inférieure ({int(conf_level*100)}%)', line=dict(color='yellow', dash='dash')
+# ))
 
 def mean_dist(hyp_df, data, kurtosis, skewness):
     """
@@ -537,7 +548,7 @@ visu_perf=None
 if option == "Analyse" and len(selected_companies) >=1:
     # Importation des données
     today = datetime.today()
-    default_end_date = today - timedelta(days=6*30)  # 6 mois avant aujourd'hui
+    default_end_date = today
 
     # Définir la date de début par défaut comme étant 1 an avant la date de fin
     default_start_date = default_end_date - timedelta(days=365)  # 1 an avant la date de fin

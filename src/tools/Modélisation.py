@@ -33,7 +33,7 @@ def import_data(index, start_date, end_date):
 
     for ticker in index:
         # Téléchargement des données pour chaque ticker
-        df = yf.download(ticker, start=start_date, end=end_date, interval="1d", repair=True, ignore_tz=True, rounding=False, session=None, auto_adjust=True)
+        df = yf.download(ticker, start=start_date, end=end_date, progress=False, interval="1d", repair=True, ignore_tz=True, rounding=False, session=None, auto_adjust=True)
         
         if df.empty:  # Vérification si le DataFrame est vide (aucune donnée disponible)
             print(f"Aucune donnée disponible pour {ticker} entre {start_date} et {end_date}. Il sera retiré de l'analyse.")
@@ -74,7 +74,7 @@ def interpolate(df, start_date, end_date):
     for ticker in df['Ticker'].unique():
         # Filtrer le DataFrame pour le Ticker actuel
         df_ticker = df[df['Ticker'] == ticker].copy()
-        del df_ticker['Ticker']
+        df_ticker = df_ticker.drop(columns=['Ticker', 'Repaired?'])
         
         # Réindexer pour ajouter toutes les dates manquantes (fréquence journalière)
         new_dates = pd.date_range(start=start_date, end=end_date, freq='D')
@@ -363,22 +363,6 @@ def rolling_pred(real_values, test_size, vol, p, q, mean, dist, lag, col):
 def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon, conf_level=0.95):
     """
     Prédit la volatilité future d'un actif avec un intervalle de confiance dynamique.
-
-    Args:
-        data (pd.Series): Séries temporelles des rendements ou des prix historiques de l'actif.
-        model (str): Type de modèle ARCH/GARCH à utiliser pour la prévision (par exemple, 'GARCH', 'EGARCH').
-        vol (str): Modèle de volatilité à utiliser (par exemple, 'GARCH', 'EGARCH').
-        p (int): Ordre de l'auto-régression (p) dans le modèle GARCH.
-        q (int): Ordre de la moyenne mobile (q) dans le modèle GARCH.
-        mean (str): Modèle de moyenne (par exemple, 'Constant', 'AR').
-        dist (str): Distribution des résidus dans le modèle (par exemple, 'normal', 't').
-        lag (int): Le nombre de décalages à utiliser si le modèle de moyenne est 'AR'.
-        col (str): Le nom de l'actif ou de la colonne dans les données.
-        horizon (int): L'horizon de prévision, en nombre de jours pour lesquels la volatilité doit être prédite.
-        conf_level (float, optional): Niveau de confiance pour l'intervalle (par défaut 0.95).
-
-    Affiche :
-        Un graphique représentant la volatilité prédite avec l'intervalle de confiance pour l'horizon spécifié.
     """
     # Modélisation ARCH/GARCH
     model = arch_model(data, vol=vol, p=p, q=q, mean=mean, dist=dist, lags=lag)
@@ -388,7 +372,7 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
     pred = model_fit.forecast(horizon=horizon)
     future_dates = [data.index[-1] + timedelta(days=i) for i in range(1, horizon + 1)]
     predicted_volatility = np.sqrt(pred.variance.values[-1, :]).round(3)
-    
+
     # Remplacement des valeurs négatives dans la variance par 0
     variance_values = np.clip(pred.variance.values[-1, :], 0, None)
 
@@ -397,33 +381,36 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
     conf_int_lower = np.sqrt(np.maximum(variance_values - z_score * np.sqrt(variance_values), 0)).round(3)
     conf_int_upper = np.sqrt(pred.variance.values[-1, :] + z_score * np.sqrt(pred.variance.values[-1, :])).round(3)
 
-    # Création du graphique interactif avec Plotly
+    # Créer le graphique
     fig = go.Figure()
+
+    # Ligne de volatilité prédite
+    fig.add_trace(go.Scatter(x=future_dates, y=predicted_volatility, mode='lines', name='Volatilité Prédite', line=dict(color='red')))
+
+    # Remplissage pour l'intervalle de confiance
     fig.add_trace(go.Scatter(
-        x=future_dates, y=conf_int_upper, mode='lines', name=f'Limite supérieure ({int(conf_level*100)}%)', line=dict(color='red', dash='dash')
+        x=future_dates + future_dates[::-1],  # Concatenate future dates with reversed ones
+        y=np.concatenate([conf_int_upper, conf_int_lower[::-1]]),  # Upper and lower bounds
+        fill='toself',
+        fillcolor='rgba(0, 0, 255, 0.3)',
+        line=dict(color='rgba(0, 0, 0, 0)'),
+        name=f'Région de confiance au niveau {int(conf_level*100)}%'
     ))
-    fig.add_trace(go.Scatter(
-        x=future_dates, y=predicted_volatility, mode='lines', name=f'Volatilité prédite', line=dict(color='orange')
-    ))
-    fig.add_trace(go.Scatter(
-        x=future_dates, y=conf_int_lower, mode='lines', name=f'Limite inférieure ({int(conf_level*100)}%)', line=dict(color='yellow', dash='dash')
-    ))
+
+    # Personnalisation du graphique
     fig.update_layout(
-        legend=dict(traceorder='normal'),
-        title=f'Prédiction de volatilité des actions {col} pour les {horizon} prochains jours',
-        xaxis_title=None,
-        yaxis_title='Volatilité prédite (en %)',
-        xaxis=dict(
-            tickformat='%d-%m-%Y', 
-            tickangle=45
-        ),
-        yaxis=dict(range=[conf_int_lower.min(), conf_int_upper.max()],
+        title=f"Prévision de la Volatilité pour {col}",
+        xaxis_title="Date",
+        yaxis_title="Volatilité",
+        showlegend=True,
+        yaxis=dict(range=[conf_int_lower.min()+0.1, conf_int_upper.max()+0.1],
                    autorange=False),
         template="seaborn",
         title_font=dict(size=17),
         title_x=0.1,
         autosize=True,
         margin=dict(l=40, r=40, t=40, b=80))
+
     fig.show()
 
 def mean_dist(hyp_df, data, kurtosis, skewness):
@@ -563,7 +550,6 @@ for col in df_pivot.columns:
     
     # Résidus du modèles
     resid = model.resid
-    print(f"Résidus du modèle pour {col} : {abs(resid).sum()}")
     
     # Validation
     df_val = model_validation(model)
@@ -603,7 +589,6 @@ for col in df_pivot.columns:
 
         model = model.fit(disp='off', options={'maxiter': 750})
         resid2 = model.resid
-        print(f"Résidus du modèle ajusté pour {col} : {abs(resid2).sum()}")
         
         # Validation
         df_val = model_validation(model)
