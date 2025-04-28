@@ -430,7 +430,7 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
         autosize=True,
         margin=dict(l=40, r=40, t=40, b=80))
     
-    st.plotly_chart(fig, use_container_width=False)
+    st.plotly_chart(fig, use_container_width=True)
     
 
 #     fig.add_trace(go.Scatter(
