@@ -12,3 +12,4 @@ yfinance
 streamlit
 requests
 joblib
+lxml
