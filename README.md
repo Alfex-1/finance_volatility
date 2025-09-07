@@ -7,7 +7,7 @@ Veuillez trouver l'application ici : https://financevolatility.streamlit.app/
 ## Prérequis
 Les conditions préalables pour exploiter efficacement ce projet varient selon l'utilisation que vous comptez en faire. Voici les recommandations spécifiques :
 
-### Utilisation de l'Interface de Calcul du Nutri-Score :
+### Utilisation de l'application :
 
 1. **Disposer d'un environnement Windows**
 2. **Connexion Internet :** Une connexion internet est indispensable pour accéder à l'application.
