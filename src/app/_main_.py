@@ -509,7 +509,7 @@ def mean_dist(hyp_df, data, kurtosis, skewness):
 st.title("Analyse des prix et des rendements des actions de plusieurs entreprises et prédiction des risques associés")
 st.subheader("Auteur : BRUNET Alexandre")
 st.write(
-    ("Bienvenue sur l'application ! Vous pouvez y visualiser le prix des actions des entreprises ainsi que leurs rendements quotidiens. "
+    ("Bienvenue sur l'application ! Vous pouvez y visualiser le prix des actions des entreprises du S&P 500 et du CAC40 ainsi que leurs rendements quotidiens. "
      "Vous avez également la possibilité de consulter les prédictions des risques (volatilité) associés aux investissements dans les actions de ces entreprises, à court terme.")
 )
 
@@ -521,14 +521,19 @@ option = st.radio("Choisissez le type d'étude que vous voulez mener", ["Analyse
 
 # Récupération des entreprises européennes (exemple pour le CAC40)
 url_cac40 = "https://en.wikipedia.org/wiki/CAC_40"
-response_cac40 = requests.get(url_cac40)
+headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                  "AppleWebKit/537.36 (KHTML, like Gecko) "
+                  "Chrome/126.0.0.0 Safari/537.36"
+}
+response_cac40 = requests.get(url_cac40, headers=headers)
 html_content_cac40 = StringIO(response_cac40.text)
 tables_cac40 = pd.read_html(html_content_cac40)
 cac40_df = tables_cac40[4]
 tickers_cac40 = cac40_df[['Ticker', 'Company']]
 
 url_sp500 = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-response_sp500 = requests.get(url_sp500)
+response_sp500 = requests.get(url_sp500, headers=headers)
 html_content_sp500 = StringIO(response_sp500.text)
 tables_sp500 = pd.read_html(html_content_sp500)
 sp500_df = tables_sp500[0]
