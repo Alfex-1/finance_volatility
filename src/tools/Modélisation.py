@@ -11,6 +11,7 @@ import yfinance as yf
 import requests
 from joblib import Parallel, delayed
 from io import StringIO
+import time
 
 def import_data(index, start_date, end_date):
     """
@@ -53,6 +54,71 @@ def import_data(index, start_date, end_date):
         return final_df
     else:
         return None
+    
+def import_data(tickers, start_date, end_date):
+    """
+    Importe les données historiques pour un ou plusieurs tickers sur une plage de dates donnée.
+
+    Args:
+        tickers (str or list): Le(s) symbole(s) (ex: "AAPL" ou ["AAPL", "MSFT"]).
+        start_date (str): Date de début au format 'YYYY-MM-DD'.
+        end_date (str): Date de fin au format 'YYYY-MM-DD'.
+
+    Returns:
+        pandas.DataFrame: Données boursières avec colonnes
+        [Date, Open, High, Low, Close, Volume, Ticker].
+        Indexé par Date.
+    """
+    if isinstance(tickers, str):
+        tickers = [tickers]
+
+    delay = 3  # secondes d’attente initiale
+    for attempt in range(3):
+        try:
+            df = yf.download(
+                tickers,
+                start=start_date,
+                end=end_date,
+                interval="1d",
+                auto_adjust=True,
+                group_by="ticker",
+                progress=False,
+                repair=True,
+                ignore_tz=True,
+                rounding=False
+            )
+            if not df.empty:
+                break
+        except Exception as e:
+            print(f"Tentative {attempt+1}/{delay} échouée : {e}")
+        time.sleep(delay)
+        delay *= 2  # backoff exponentiel
+    else:
+        print(f"Échec : impossible de récupérer {tickers}")
+        return None
+
+    # Normalisation
+    all_data = []
+    for ticker in tickers:
+        try:
+            sub_df = df[ticker].copy()
+            if sub_df.empty:
+                print(f"Aucune donnée pour {ticker}")
+                continue
+            sub_df["Ticker"] = ticker
+            sub_df.index.name = "Date"
+            all_data.append(sub_df.reset_index())
+        except KeyError:
+            print(f"{ticker} introuvable dans les données.")
+
+    if not all_data:
+        return None
+
+    final_df = pd.concat(all_data, axis=0, ignore_index=True)
+    final_df["Date"] = pd.to_datetime(final_df["Date"])
+    final_df.set_index("Date", inplace=True)
+
+    return final_df
 
 def interpolate(df, start_date, end_date):
     """
@@ -483,15 +549,15 @@ headers = {
                   "AppleWebKit/537.36 (KHTML, like Gecko) "
                   "Chrome/126.0.0.0 Safari/537.36"
 }
-response_cac40 = requests.get(url_cac40)
-html_content_cac40 = StringIO(response_cac40.text, headers=headers)
+response_cac40 = requests.get(url_cac40, headers=headers)
+html_content_cac40 = StringIO(response_cac40.text)
 tables_cac40 = pd.read_html(html_content_cac40)
 cac40_df = tables_cac40[4]
 tickers_cac40 = cac40_df[['Ticker', 'Company']]
 
 url_sp500 = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-response_sp500 = requests.get(url_sp500)
-html_content_sp500 = StringIO(response_sp500.text, headers=headers)
+response_sp500 = requests.get(url_sp500, headers=headers)
+html_content_sp500 = StringIO(response_sp500.text)
 tables_sp500 = pd.read_html(html_content_sp500)
 sp500_df = tables_sp500[0]
 tickers_sp500 = sp500_df[['Symbol', 'Security']].rename(columns={'Symbol': 'Ticker', 'Security': 'Company'})
@@ -500,9 +566,9 @@ all_tickers = pd.concat([tickers_sp500, tickers_cac40], ignore_index=True)
 ticker_to_name = dict(zip(all_tickers['Ticker'], all_tickers['Company']))
 
 # Importation
-start_date='2022-06-01'
+start_date='2025-06-01'
 end_date='2025-03-10'
-# df = import_data(["AAPL", "MSFT", "GOOG","META"], start_date, end_date)
+df = import_data(["AAPL", "MSFT", "GOOG","META"], start_date, end_date)
 df = import_data(["AAPL"], start_date, end_date)
 
 # Interpolation des données manquantes
