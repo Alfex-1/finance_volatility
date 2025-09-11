@@ -566,7 +566,7 @@ all_tickers = pd.concat([tickers_sp500, tickers_cac40], ignore_index=True)
 ticker_to_name = dict(zip(all_tickers['Ticker'], all_tickers['Company']))
 
 # Importation
-start_date='2025-06-01'
+start_date='2024-06-01'
 end_date='2025-03-10'
 df = import_data(["AAPL", "MSFT", "GOOG","META"], start_date, end_date)
 df = import_data(["AAPL"], start_date, end_date)
