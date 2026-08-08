@@ -1,14 +1,37 @@
-numpy==1.26.4
-pandas==2.3.2
-scipy==1.13.0
+# Core numerical stack
+numpy==2.3.2
+pandas==2.3.1
+scipy==1.16.1
+
+# Statistics / econometrics
 statsmodels==0.14.5
-scikit-learn==1.7.2
-arch==7.2.0
-matplotlib==3.10.6
-seaborn==0.13.2
-plotly==6.3.0
+arch==8.0.0
+
+# Machine learning
+scikit-learn==1.7.1
+joblib==1.5.1
+
+# Data download / APIs
 yfinance==0.2.65
-streamlit==1.42.2
-requests==2.32.5
-joblib==1.4.0
-lxml==5.3.1
+
+# Plotting
+matplotlib==3.10.5
+seaborn==0.13.2
+mplfinance==0.12.10b0
+plotly==6.2.0
+
+# Web scraping / HTML
+lxml==6.0.0
+html5lib==1.1
+beautifulsoup4==4.13.4
+
+# Jupyter environment (optionnel mais recommandé)
+jupyterlab==4.4.5
+ipykernel==6.30.1
+notebook==7.4.5
+
+# Utilities
+requests==2.32.4
+tqdm==4.67.1
+python-dateutil==2.9.0.post0
+pytz==2025.2

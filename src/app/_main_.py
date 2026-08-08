@@ -85,7 +85,7 @@ def interpolate(df, start_date, end_date):
         df_ticker = df_ticker.reindex(new_dates)
         
         # Interpoler les valeurs manquantes pour ce Ticker
-        df_ticker = df_ticker.interpolate(method='quadratic', limit_direction='both')
+        df_ticker = df_ticker.interpolate(method='time')
         df_ticker['Ticker'] = ticker
         
         # Ajouter le DataFrame interpolé à la liste
@@ -508,29 +508,19 @@ st.link_button("Voir la documentation", "https://github.com/Alfex-1/finance_vola
 # Case à cocher pour "Analyse" et "Prédiction"
 option = st.radio("Choisissez le type d'étude que vous voulez mener", ["Analyse", "Prédiction"])
 
-# Récupération des entreprises européennes (exemple pour le CAC40)
-url_cac40 = "https://en.wikipedia.org/wiki/CAC_40"
-headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                  "AppleWebKit/537.36 (KHTML, like Gecko) "
-                  "Chrome/126.0.0.0 Safari/537.36"
-}
-response_cac40 = requests.get(url_cac40, headers=headers)
-html_content_cac40 = StringIO(response_cac40.text)
-tables_cac40 = pd.read_html(html_content_cac40)
-cac40_df = tables_cac40[4]
-tickers_cac40 = cac40_df[['Ticker', 'Company']]
+# Entreprises
+url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+try:
+    response = requests.get(url, timeout=10)
+    response.raise_for_status()
+    tables = pd.read_html(response.text)
+    sp500_df = tables[0]
+except (requests.RequestException, ValueError, IndexError) as e:
+    st.error("Impossible de récupérer la liste des entreprises du S&P 500. Veuillez réessayer plus tard.")
+    st.stop()
 
-url_sp500 = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-response_sp500 = requests.get(url_sp500, headers=headers)
-html_content_sp500 = StringIO(response_sp500.text)
-tables_sp500 = pd.read_html(html_content_sp500)
-sp500_df = tables_sp500[0]
-tickers_sp500 = sp500_df[['Symbol', 'Security']].rename(columns={'Symbol': 'Ticker', 'Security': 'Company'})
-
-all_tickers = pd.concat([tickers_sp500, tickers_cac40], ignore_index=True)
-ticker_to_name = dict(zip(all_tickers['Ticker'], all_tickers['Company']))
-
+tickers = sp500_df[['Symbol', 'Security']]
+ticker_to_name = dict(zip(tickers['Symbol'], tickers['Security']))
 selected_companies = st.multiselect("Choisissez les entreprises à analyser", 
                                     all_tickers['Company'].tolist(),
                                     max_selections=4)
@@ -538,6 +528,7 @@ selected_companies = st.multiselect("Choisissez les entreprises à analyser",
 start_date = None
 end_date = None
 visu_perf=None
+launch = False
 
 if option == "Analyse" and len(selected_companies) >=1:
     # Importation des données
@@ -612,8 +603,9 @@ elif option == "Prédiction" and len(selected_companies) >=1:
         
         # Lancer l'application
         launch = st.button("Lancer")
-elif option == None:
-    st.warning("Veuillez sélectionner une seule option à la fois.")
+
+elif len(selected_companies) == 0:
+    st.info("Veuillez sélectionner au moins une entreprise à analyser.")
 
 if option == "Analyse" and len(selected_companies) >= 1 and start_date and end_date and df is not None and launch:
     
@@ -956,20 +948,39 @@ elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and d
             # Distribution
             kurt_val, skewness_val = distribution(resid)
 
-            if all(df_val['Respect']) == 1:
-                dist='normal'
-                if visu_perf :
+            if all(df_val['Respect']):
+                dist = 'normal'
+                if visu_perf:
                     current_step += 1
                     progress_bar.progress(current_step / total_steps)
                     status_text.text(f"Prévisions glissantes pour {col}...")
-                    rolling_pred(real_values=df_pivot[col], train=train, test_size=test_size, vol="GARCH", p=p, q=q, mean=mean_t, dist=dist, col=col)
+                    rolling_pred(real_values=df_pivot[col], train=train, test_size=test_size,
+                                vol="GARCH", p=p, q=q, mean=mean_t, dist=dist, col=col)
                 current_step += 1
                 progress_bar.progress(current_step / total_steps)
                 status_text.text(f"Prédictions pour {col}...")
-                forecasting_volatility(data=df_pivot[col], model=model,vol='GARCH', p=p, q=q, mean=mean_t, dist='normal', col=col, horizon=horizon, conf_level=conf_int)
-                current_step += 1
-                progress_bar.progress(current_step / total_steps)
-                break
+                forecasting_volatility(data=df_pivot[col], model=model, vol='GARCH', p=p, q=q,
+                                        mean=mean_t, dist='normal', col=col, horizon=horizon,
+                                        conf_level=conf_int)
+
+                # Ajouter quand même ce ticker aux résumés, avec des infos cohérentes
+                model_summary.append({
+                    'Entreprise': col,
+                    'Ordre p': p,
+                    'Ordre q': q,
+                    'Moyenne': mean_t,
+                    "Distribution d'erreur": dist,
+                    'Retard': "Aucun"
+                })
+                model_val.append({
+                    'Entreprise': col,
+                    'Normalité des résidus': "Oui" if df_val.loc[df_val['Hypothèse'] == 'Normalité des résidus', 'Respect'].values[0] == 1 else "Non",
+                    'Indépendance des résidus': "Oui" if df_val.loc[df_val['Hypothèse'] == 'Autocorrélation des résidus', 'Respect'].values[0] == 1 else "Non",
+                    'Indépendance des résidus au carré': "Oui" if df_val.loc[df_val['Hypothèse'] == 'Autocorrélation des résidus au carré', 'Respect'].values[0] == 1 else "Non",
+                    'Homoscédasticité conditionnelle': "Oui" if df_val.loc[df_val['Hypothèse'] == 'Effet ARCH', 'Respect'].values[0] == 1 else "Non",
+                    'Stationnarité conditionnelle': "Oui" if df_val.loc[df_val['Hypothèse'] == 'Stationnarité conditionnelle', 'Respect'].values[0] == 1 else "Non"
+                })
+                continue   # <-- passe à l'entreprise suivante au lieu de sortir de la boucle
             else:
                 current_step += 1
                 progress_bar.progress(current_step / total_steps)

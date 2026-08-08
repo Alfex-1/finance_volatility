@@ -250,7 +250,7 @@ coverage/
 # =========================================================
 
 docker-compose.override.yml
-.devcontainer/
+.devcontainer
 
 # Attention : ne pas ignorer Dockerfile ou compose.yml
 
