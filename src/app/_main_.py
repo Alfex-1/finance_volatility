@@ -100,6 +100,149 @@ def interpolate(df, start_date, end_date):
     
     return df
 
+def visualize_correlation(df, object_viz="prix de clôture"):
+    tickers = df.columns.tolist()
+
+    if len(tickers) > 1:
+
+        n = len(tickers)
+
+        # ========================================================
+        # 1. MATRICE DE CORRÉLATION SPEARMAN
+        # ========================================================
+
+        correlation_matrix = df.corr(
+            method="spearman"
+        ) * 100
+
+        # Masque : on cache la diagonale + triangle supérieur
+        mask_upper = np.triu(np.ones_like(correlation_matrix, dtype=bool), k=1)
+
+        fig_heatmap, ax_heatmap = plt.subplots(
+            figsize=(10, 8)
+        )
+
+        sns.heatmap(
+            correlation_matrix,
+            mask=mask_upper,
+            annot=True,
+            fmt=".2f",
+            cmap="flare",
+            cbar=False,
+            ax=ax_heatmap,
+            square=True
+        )
+
+        ax_heatmap.set_title(
+            f"Corrélations entre les {object_viz} "
+            f"des entreprises (en %)",
+            fontsize=16
+        )
+
+        ax_heatmap.set_xlabel(None)
+        ax_heatmap.set_ylabel(None)
+
+        st.pyplot(fig_heatmap)
+
+
+        # ========================================================
+        # 2. MATRICE DES REGPLOTS
+        # ========================================================
+
+        fig_reg, axes = plt.subplots(
+            nrows=n,
+            ncols=n,
+            figsize=(4 * n, 4 * n)
+        )
+
+        # Cas particulier : un seul ticker
+        if n == 1:
+            axes = np.array([[axes]])
+
+        for i in range(n):
+            for j in range(n):
+
+                ax = axes[i, j]
+
+                # ------------------------------------------------
+                # Triangle supérieur + diagonale
+                # ------------------------------------------------
+
+                if i < j:
+                    ax.set_visible(False)
+                    continue
+
+                elif i == j:
+                    ax.text(
+                        0.5,
+                        0.5,
+                        f"{tickers[i]}\n100 %",
+                        ha="center",
+                        va="center",
+                        fontsize=14,
+                        transform=ax.transAxes
+                    )
+
+                    ax.set_xticks([])
+                    ax.set_yticks([])
+
+                    continue
+
+                # ------------------------------------------------
+                # Triangle inférieur
+                # ------------------------------------------------
+
+                ticker_x = tickers[j]
+                ticker_y = tickers[i]
+
+                x = df[ticker_x]
+                y = df[ticker_y]
+
+                # Supprimer les NaN pour cette paire
+                pair_data = pd.concat(
+                    [x, y],
+                    axis=1
+                ).dropna()
+
+                x_clean = pair_data.iloc[:, 0]
+                y_clean = pair_data.iloc[:, 1]
+
+                sns.regplot(
+                    x=x_clean,
+                    y=y_clean,
+                    ax=ax,
+                    scatter_kws={"s": 15},
+                    line_kws={"color": "red"},
+                    order=3
+                )
+
+                ax.set_xlabel(
+                    ticker_x,
+                    fontsize=11
+                )
+
+                ax.set_ylabel(
+                    ticker_y,
+                    fontsize=11
+                )
+
+                ax.tick_params(
+                    axis="both",
+                    labelsize=8
+                )
+
+        fig_reg.suptitle(
+            f"Relation entre les {object_viz} "
+            "des entreprises",
+            fontsize=18
+        )
+
+        plt.tight_layout(
+            rect=[0, 0, 1, 0.97]
+        )
+
+        st.pyplot(fig_reg)
+
 def fit_model(data, p, q, o, lags, mean, dist, vol):
     """Ajuste un modèle ARCH/GARCH à une série temporelle avec des paramètres donnés.
 
@@ -258,7 +401,6 @@ def model_validation(model):
     df_results = pd.DataFrame(results)
     return df_results
 
-
 def distribution(resid):
     """
     Calcule la kurtosis et la skewness (asymétrie) d'une série de résidus pour évaluer la forme de la distribution.
@@ -302,7 +444,6 @@ def forecast_volatility(i, real_values, test_size, vol, p, q, mean, dist, lag):
     model_fit = model.fit(disp='off', options={'maxiter': 750})
     pred = model_fit.forecast(horizon=1)
     return np.sqrt(pred.variance.values[-1, :][0])
-
 
 def rolling_pred(real_values, test_size, vol, p, q, mean, dist, lag, col):
     """
@@ -496,7 +637,6 @@ def mean_dist(hyp_df, data, kurtosis, skewness):
     return str(mean), str(dist)
 
 st.title("Analyse des prix et des rendements des actions de plusieurs entreprises et prédiction des risques associés")
-st.subheader("Auteur : BRUNET Alexandre")
 st.write(
     ("Bienvenue sur l'application ! Vous pouvez y visualiser le prix des actions des entreprises du S&P 500 et du CAC40 ainsi que leurs rendements quotidiens. "
      "Vous avez également la possibilité de consulter les prédictions des risques (volatilité) associés aux investissements dans les actions de ces entreprises, à court terme.")
@@ -509,18 +649,38 @@ st.link_button("Voir la documentation", "https://github.com/Alfex-1/finance_vola
 option = st.radio("Choisissez le type d'étude que vous voulez mener", ["Analyse", "Prédiction"])
 
 # Entreprises
-url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+url_sp500 = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+url_cac40 = "https://en.wikipedia.org/wiki/CAC_40"
+headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                  "AppleWebKit/537.36 (KHTML, like Gecko) "
+                  "Chrome/139.0.0.0 Safari/537.36"
+}
+
 try:
-    response = requests.get(url, timeout=10)
+    response = requests.get(url_sp500, headers=headers, timeout=60)
     response.raise_for_status()
-    tables = pd.read_html(response.text)
+    tables = pd.read_html(StringIO(response.text))
     sp500_df = tables[0]
+    tickers_sp500 = sp500_df[['Symbol', 'Security']]
 except (requests.RequestException, ValueError, IndexError) as e:
     st.error("Impossible de récupérer la liste des entreprises du S&P 500. Veuillez réessayer plus tard.")
     st.stop()
+    
+try:
+    response = requests.get(url_cac40, headers=headers, timeout=60)
+    response.raise_for_status()
+    tables = pd.read_html(StringIO(response.text))
+    cac40_df = tables[4]
+    tickers_cac40 = cac40_df[['Ticker', 'Company']]
+except (requests.RequestException, ValueError, IndexError) as e:
+    st.error("Impossible de récupérer la liste des entreprises du CAC 40. Veuillez réessayer plus tard.")
+    st.stop()
+    
+# Rassembler les données
+all_tickers = pd.concat([tickers_sp500.rename(columns={'Symbol': 'Ticker', 'Security': 'Company'}), tickers_cac40], ignore_index=True)
 
-tickers = sp500_df[['Symbol', 'Security']]
-ticker_to_name = dict(zip(tickers['Symbol'], tickers['Security']))
+ticker_to_name = dict(zip(all_tickers['Ticker'], all_tickers['Company']))
 selected_companies = st.multiselect("Choisissez les entreprises à analyser", 
                                     all_tickers['Company'].tolist(),
                                     max_selections=4)
@@ -833,57 +993,13 @@ if option == "Analyse" and len(selected_companies) >= 1 and start_date and end_d
         # Afficher le graphique
         st.plotly_chart(fig)
 
-    # Vérification de l'existance de corrélations
-    df_pivot = df_returns.pivot(index="Date", columns="Ticker", values="Close")
-    tickers = df_pivot.columns
-
-    if len(tickers) > 1:
-        ticker_pairs = list(combinations(tickers, 2))
-
-        # Calcul automatique des dimensions du tableau
-        num_pairs = len(ticker_pairs)
-        ncols = 3
-        nrows = math.ceil(num_pairs / ncols)
-
-        # Créer la figure et les axes
-        fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(ncols * 5, nrows * 4))
-        axes = axes.flatten()  # Aplatir pour une itération facile
-
-        # Traiter chaque paire de tickers
-        for idx, (ticker_x, ticker_y) in enumerate(ticker_pairs):
-            ax = axes[idx]
-            sns.regplot(
-                x=df_pivot[ticker_x], 
-                y=df_pivot[ticker_y], 
-                ax=ax, 
-                scatter_kws={'s': 20}, 
-                line_kws={'color': 'red'}, 
-                ci=None,  # Supprime l'intervalle de confiance
-                robust=True  # Robustesse aux outliers
-            )
-            ax.set_xlabel(ticker_x, fontsize=13)
-            ax.set_ylabel(ticker_y, fontsize=13)
-            ax.tick_params(axis='both', labelsize=14)
-
-        # Désactiver les axes inutilisés si le nombre de paires est inférieur au nombre d'axes
-        for idx in range(num_pairs, len(axes)):
-            axes[idx].set_visible(False)
-
-        fig.suptitle("\nRelation entre les prix de clôture de chaque entreprise", fontsize=20)
-        plt.tight_layout(rect=[0, 0, 1, 0.96])
-        st.pyplot(fig)  # Passer l'objet 'fig' directement à Streamlit
-
-        # Créer la matrice de corrélation
-        correlation_matrix = df_pivot.corr(method='pearson')* 100
-
-        # Affichage de la heatmap des corrélations
-        plt.figure(figsize=(8, 6))
-        sns.heatmap(correlation_matrix, annot=True, cmap="flare", fmt=".2f", robust=True, cbar=False)
-        plt.title("\nCorrélations entre les prix de clôture de chaque entreprise (en %)\n")
-        plt.xlabel(None)
-        plt.ylabel(None)
-        plt.grid(False)
-        st.pyplot(plt) 
+    # Vérification de l'existance de corrélations pour les prix de clôture
+    df_pivot_close = df_returns.pivot(index="Date", columns="Ticker", values="Close")
+    visualize_correlation(df_pivot_close, object_viz="prix de clôture") 
+    
+    # Vérification de l'existance de corrélations pour les rendements
+    df_pivot_returns = df_returns.pivot(index="Date", columns="Ticker", values="Returns")
+    visualize_correlation(df_pivot_returns, object_viz="rendements")
 
 elif option == "Prédiction" and len(selected_companies) >= 1 and end_date and df is not None and visu_perf is not None and launch:
     with st.spinner("La recherche du modèle optimal pour chaque entreprise peut durer quelques temps. Merci de patienter !"):
