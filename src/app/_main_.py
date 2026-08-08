@@ -1,23 +1,20 @@
-# Imports
 from datetime import datetime, timedelta
 import math
 from itertools import combinations
 import numpy as np
 import pandas as pd
-from scipy.stats import skew, jarque_bera, shapiro, ttest_1samp, norm
-import statsmodels.api as sm
-from statsmodels.stats.stattools import jarque_bera
+from scipy.stats import shapiro, ttest_1samp, norm
 from statsmodels.stats.diagnostic import acorr_ljungbox, het_arch
 from sklearn.model_selection import ParameterGrid
 from arch import arch_model
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.graph_objects as go
-import mplfinance as mpf
 import yfinance as yf
 import streamlit as st
 import requests
 from joblib import Parallel, delayed
+from io import StringIO
 
 def import_data(index, start_date, end_date):
     """
@@ -40,7 +37,7 @@ def import_data(index, start_date, end_date):
 
     for ticker in index:
         # Téléchargement des données pour chaque ticker
-        df = yf.download(ticker, start=start_date, end=end_date, progress=False)
+        df = yf.download(ticker, start=start_date, end=end_date, interval="1d", progress=False, repair=True, ignore_tz=True, rounding=False, session=None, auto_adjust=True)
         
         if df.empty:  # Vérification si le DataFrame est vide (aucune donnée disponible)
             st.warning(f"Aucune donnée disponible pour {ticker} entre {start_date} et {end_date}. Il sera retiré de l'analyse.")
@@ -81,7 +78,7 @@ def interpolate(df, start_date, end_date):
     for ticker in df['Ticker'].unique():
         # Filtrer le DataFrame pour le Ticker actuel
         df_ticker = df[df['Ticker'] == ticker].copy()
-        del df_ticker['Ticker']
+        df_ticker = df_ticker.drop(columns=['Ticker', 'Repaired?'])
         
         # Réindexer pour ajouter toutes les dates manquantes (fréquence journalière)
         new_dates = pd.date_range(start=start_date, end=end_date, freq='D')
@@ -408,24 +405,23 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
 
     # Création du graphique interactif avec Plotly
     fig = go.Figure()
+    fig.add_trace(go.Scatter(x=future_dates, y=predicted_volatility, mode='lines', name='Volatilité Prédite', line=dict(color='red')))
+    
+    # Remplissage pour la région de confiance
     fig.add_trace(go.Scatter(
-        x=future_dates, y=conf_int_upper, mode='lines', name=f'Limite supérieure ({int(conf_level*100)}%)', line=dict(color='red', dash='dash')
-    ))
-    fig.add_trace(go.Scatter(
-        x=future_dates, y=predicted_volatility, mode='lines', name=f'Volatilité prédite', line=dict(color='orange')
-    ))
-    fig.add_trace(go.Scatter(
-        x=future_dates, y=conf_int_lower, mode='lines', name=f'Limite inférieure ({int(conf_level*100)}%)', line=dict(color='yellow', dash='dash')
-    ))
+        x=future_dates + future_dates[::-1],  # Concatenate future dates with reversed ones
+        y=np.concatenate([conf_int_upper, conf_int_lower[::-1]]),  # Upper and lower bounds
+        fill='toself',
+        fillcolor='rgba(0, 0, 255, 0.3)',
+        line=dict(color='rgba(0, 0, 0, 0)'),
+        name=f'Région de confiance au niveau {int(conf_level*100)}%'))   
+    
+    # Personnalisation du graphique
     fig.update_layout(
         legend=dict(traceorder='normal'),
-        title=f'Prédiction de la volatilité des actions {col} pour les {horizon} prochains jours',
+        title=f"Prévision de la Volatilité pour {col}",
         xaxis_title=None,
-        yaxis_title='Volatilité prédite (en %)',
-        xaxis=dict(
-            tickformat='%d-%m-%Y', 
-            tickangle=45
-        ),
+        yaxis_title="Volatilité prédite (en %)",
         yaxis=dict(range=[conf_int_lower.min()+0.1, conf_int_upper.max()+0.1],
                    autorange=False),
         template="seaborn",
@@ -433,8 +429,9 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
         title_x=0.1,
         autosize=True,
         margin=dict(l=40, r=40, t=40, b=80))
-    st.plotly_chart(fig, use_container_width=False)
-
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
 def mean_dist(hyp_df, data, kurtosis, skewness):
     """
     Détermine la spécification de la moyenne et de la distribution d'un modèle basé sur les hypothèses
@@ -501,7 +498,7 @@ def mean_dist(hyp_df, data, kurtosis, skewness):
 st.title("Analyse des prix et des rendements des actions de plusieurs entreprises et prédiction des risques associés")
 st.subheader("Auteur : BRUNET Alexandre")
 st.write(
-    ("Bienvenue sur l'application ! Vous pouvez y visualiser le prix des actions des entreprises ainsi que leurs rendements quotidiens. "
+    ("Bienvenue sur l'application ! Vous pouvez y visualiser le prix des actions des entreprises du S&P 500 et du CAC40 ainsi que leurs rendements quotidiens. "
      "Vous avez également la possibilité de consulter les prédictions des risques (volatilité) associés aux investissements dans les actions de ces entreprises, à court terme.")
 )
 
@@ -511,15 +508,31 @@ st.link_button("Voir la documentation", "https://github.com/Alfex-1/finance_vola
 # Case à cocher pour "Analyse" et "Prédiction"
 option = st.radio("Choisissez le type d'étude que vous voulez mener", ["Analyse", "Prédiction"])
 
-# Entreprises
-url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-response = requests.get(url)
-tables = pd.read_html(response.text)
-sp500_df = tables[0]
-tickers = sp500_df[['Symbol', 'Security']]
-ticker_to_name = dict(zip(tickers['Symbol'], tickers['Security']))
+# Récupération des entreprises européennes (exemple pour le CAC40)
+url_cac40 = "https://en.wikipedia.org/wiki/CAC_40"
+headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                  "AppleWebKit/537.36 (KHTML, like Gecko) "
+                  "Chrome/126.0.0.0 Safari/537.36"
+}
+response_cac40 = requests.get(url_cac40, headers=headers)
+html_content_cac40 = StringIO(response_cac40.text)
+tables_cac40 = pd.read_html(html_content_cac40)
+cac40_df = tables_cac40[4]
+tickers_cac40 = cac40_df[['Ticker', 'Company']]
+
+url_sp500 = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+response_sp500 = requests.get(url_sp500, headers=headers)
+html_content_sp500 = StringIO(response_sp500.text)
+tables_sp500 = pd.read_html(html_content_sp500)
+sp500_df = tables_sp500[0]
+tickers_sp500 = sp500_df[['Symbol', 'Security']].rename(columns={'Symbol': 'Ticker', 'Security': 'Company'})
+
+all_tickers = pd.concat([tickers_sp500, tickers_cac40], ignore_index=True)
+ticker_to_name = dict(zip(all_tickers['Ticker'], all_tickers['Company']))
+
 selected_companies = st.multiselect("Choisissez les entreprises à analyser", 
-                                    tickers['Security'].tolist(),
+                                    all_tickers['Company'].tolist(),
                                     max_selections=4)
 
 start_date = None
@@ -529,7 +542,7 @@ visu_perf=None
 if option == "Analyse" and len(selected_companies) >=1:
     # Importation des données
     today = datetime.today()
-    default_end_date = today - timedelta(days=6*30)  # 6 mois avant aujourd'hui
+    default_end_date = today
 
     # Définir la date de début par défaut comme étant 1 an avant la date de fin
     default_start_date = default_end_date - timedelta(days=365)  # 1 an avant la date de fin
@@ -538,7 +551,7 @@ if option == "Analyse" and len(selected_companies) >=1:
     start_date = st.date_input("Sélectionnez la date à partir de laquelle les analyses débuteront", value=default_start_date.date())
     end_date = st.date_input("Sélectionnez la date à partir de laquelle les analyses se finiront", value=default_end_date.date())    
 
-    selected_tickers = tickers[tickers['Security'].isin(selected_companies)]['Symbol'].tolist()
+    selected_tickers = all_tickers[all_tickers['Company'].isin(selected_companies)]['Ticker'].tolist()
     
     df = import_data(selected_tickers, start_date, end_date)
     
@@ -578,7 +591,7 @@ elif option == "Prédiction" and len(selected_companies) >=1:
     # Choisir l'horizon des prédictions
     horizon = st.slider("Choisissez l'horizon des prédictions (en jours)", min_value=2, max_value=15, value=7)    
 
-    selected_tickers = tickers[tickers['Security'].isin(selected_companies)]['Symbol'].tolist()
+    selected_tickers = all_tickers[all_tickers['Company'].isin(selected_companies)]['Ticker'].tolist()
     df = import_data(selected_tickers, start_date, end_date)
     
     if df is None:
@@ -603,18 +616,40 @@ elif option == None:
     st.warning("Veuillez sélectionner une seule option à la fois.")
 
 if option == "Analyse" and len(selected_companies) >= 1 and start_date and end_date and df is not None and launch:
+    
     # Visualisation des prix des actions
-    plt.figure(figsize=(11, 6))
-    sns.lineplot(data=df, x="Date", y="Close", hue="Ticker")
-    plt.title("\nÉvolution des prix de clôture par entreprise\n", fontsize=16)
-    plt.xlabel(None)
-    plt.ylabel("Prix de clôture (en USD)", fontsize=13)
-    plt.xticks(rotation=45, fontsize=13)
-    plt.yticks(fontsize=13)
-    plt.tight_layout()
-    plt.grid(True)
-    plt.legend(title="Entreprises", fontsize=12.5, title_fontsize=14, loc='best')
-    st.pyplot(plt)
+    fig = go.Figure()
+
+    for ticker in df["Ticker"].unique():
+        df_ticker = df[df["Ticker"] == ticker]
+
+        fig.add_trace(
+            go.Scatter(
+                x=df_ticker["Date"],
+                y=df_ticker["Close"],
+                mode="lines",
+                name=ticker,
+                hovertemplate=(
+                    "Ticker: %{text}<br>"
+                    "Date: %{x|%Y-%m-%d}<br>"
+                    "Close: %{y:.2f}<extra></extra>"
+                ),
+                text=[ticker] * len(df_ticker)
+            )
+        )
+
+    fig.update_layout(
+        title="Évolution des prix de clôture par entreprise",
+        xaxis_title=None,
+        yaxis_title="Prix de clôture (en USD)",
+        legend_title="Entreprises",
+        template="plotly_white",
+        hovermode="x unified"
+    )
+
+    fig.update_xaxes(tickangle=45)
+
+    st.plotly_chart(fig, use_container_width=True)
 
     # Calculer les rendements quotidiens et cumulés
     df_list = []
@@ -632,34 +667,70 @@ if option == "Analyse" and len(selected_companies) >= 1 and start_date and end_d
     df_returns["Cumul_returns"] *= 100
     df_returns["Returns"] *= 100
 
-    plt.figure(figsize=(10, 6))
-    for ticker in df['Ticker'].unique():
-        ticker_data = df_returns[df_returns['Ticker'] == ticker]
-        plt.plot(ticker_data['Date'], ticker_data['Returns'], label=ticker)
-    plt.title("\nRendements journaliers par entreprise\n",fontsize=15)
-    plt.xlabel(None)
-    plt.ylabel("Rendements journaliers (en %)",fontsize=13)
-    plt.legend(title="Entreprises", fontsize=12.5, title_fontsize=14, loc='best')
-    plt.xticks(rotation=45, fontsize=13)
-    plt.yticks(fontsize=13)
-    plt.grid(True)
-    plt.tight_layout()
-    st.pyplot(plt)
+    fig = go.Figure()
+
+    for ticker in df_returns["Ticker"].unique():
+        data = df_returns[df_returns["Ticker"] == ticker]
+
+        fig.add_trace(
+            go.Scatter(
+                x=data["Date"],
+                y=data["Returns"],
+                mode="lines",
+                name=ticker,
+                hovertemplate=(
+                    "Ticker: %{text}<br>"
+                    "Date: %{x|%Y-%m-%d}<br>"
+                    "Return: %{y:.2f}%<extra></extra>"
+                ),
+                text=[ticker] * len(data)
+            )
+        )
+
+    fig.update_layout(
+        title="Rendements journaliers par entreprise",
+        xaxis_title=None,
+        yaxis_title="Rendements journaliers (%)",
+        template="plotly_white",
+        hovermode="x unified",
+        legend_title="Entreprises"
+    )
+
+    fig.update_xaxes(tickangle=45)
+    st.plotly_chart(fig, use_container_width=True)
 
 
-    plt.figure(figsize=(10, 6))
-    for ticker in df['Ticker'].unique():
-        ticker_data = df_returns[df_returns['Ticker'] == ticker]
-        plt.plot(ticker_data['Date'], ticker_data['Cumul_returns'], label=ticker)
-    plt.title("\nEvolution des rendements journaliers cumulés par entreprise\n",fontsize=15)
-    plt.xlabel(None)
-    plt.ylabel("Rendements cumulés journaliers (%)",fontsize=13)
-    plt.legend(title="Entreprises", fontsize=12.5, title_fontsize=14, loc='best')
-    plt.xticks(rotation=45, fontsize=13)
-    plt.yticks(fontsize=13)
-    plt.grid(True)
-    plt.tight_layout()
-    st.pyplot(plt)
+    fig = go.Figure()
+
+    for ticker in df_returns["Ticker"].unique():
+        data = df_returns[df_returns["Ticker"] == ticker]
+
+        fig.add_trace(
+            go.Scatter(
+                x=data["Date"],
+                y=data["Cumul_returns"],
+                mode="lines",
+                name=ticker,
+                hovertemplate=(
+                    "Ticker: %{text}<br>"
+                    "Date: %{x|%Y-%m-%d}<br>"
+                    "Cumul: %{y:.2f}%<extra></extra>"
+                ),
+                text=[ticker] * len(data)
+            )
+        )
+
+    fig.update_layout(
+        title="Évolution des rendements cumulés par entreprise",
+        xaxis_title=None,
+        yaxis_title="Rendements cumulés (%)",
+        template="plotly_white",
+        hovermode="x unified",
+        legend_title="Entreprises"
+    )
+
+    fig.update_xaxes(tickangle=45)
+    st.plotly_chart(fig, use_container_width=True)
 
     # Comparaison des rendements moyennes et de leur volatilité (risques)
     mean_list = []
@@ -691,25 +762,33 @@ if option == "Analyse" and len(selected_companies) >= 1 and start_date and end_d
         ascending=[True, False]
     )
 
-    plt.figure(figsize=(10, 6))
-    ax = sns.barplot(x="Ticker", y="Valeur", hue="Mesure", data=df_perf_melted)
-    plt.title("\nPerformances et risques moyens des actions par entreprise\n", fontsize=15)
-    plt.xlabel(None)
-    plt.ylabel("Mesures en %", fontsize=13)
-    plt.xticks(fontsize=13)
-    plt.yticks(fontsize=13)
-    plt.legend(title=None, fontsize=13, loc='best')
+    fig = go.Figure()
 
-    # Ajouter les valeurs des étiquettes sur chaque barre
-    for p in ax.patches:
-        height = p.get_height()  # Obtenir la hauteur de chaque barre
-        if height != 0:  # Ignorer les barres dont la hauteur est zéro
-            ax.annotate(f'{height:.2f}',  # Formatage avec 2 décimales
-                        xy=(p.get_x() + p.get_width() / 2, height),  # Positionnement au sommet de la barre
-                        xytext=(0, 3),  # Décalage vertical pour le texte
-                        textcoords="offset points",
-                        ha='center', va='bottom', fontsize=12)
-    st.pyplot(plt)
+    mesures = df_perf_melted["Mesure"].unique()
+
+    for mesure in mesures:
+        df_m = df_perf_melted[df_perf_melted["Mesure"] == mesure]
+
+        fig.add_trace(
+            go.Bar(
+                x=df_m["Ticker"],
+                y=df_m["Valeur"],
+                name=mesure,
+                text=df_m["Valeur"].round(2),
+                textposition="outside"
+            )
+        )
+
+    fig.update_layout(
+        title="Performances et risques moyens des actions par entreprise",
+        xaxis_title=None,
+        yaxis_title="Mesures en %",
+        barmode="group",
+        template="plotly_white",
+        legend_title="Mesure"
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
         
     # Pour chaque ticker, tracer un graphique en chandelle interactif
     data = df.copy()
@@ -807,7 +886,7 @@ if option == "Analyse" and len(selected_companies) >= 1 and start_date and end_d
 
         # Affichage de la heatmap des corrélations
         plt.figure(figsize=(8, 6))
-        sns.heatmap(correlation_matrix, annot=True, cmap="flare", fmt=".2f")
+        sns.heatmap(correlation_matrix, annot=True, cmap="flare", fmt=".2f", robust=True, cbar=False)
         plt.title("\nCorrélations entre les prix de clôture de chaque entreprise (en %)\n")
         plt.xlabel(None)
         plt.ylabel(None)
