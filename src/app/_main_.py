@@ -213,7 +213,8 @@ def visualize_correlation(df, object_viz="prix de clôture"):
                     ax=ax,
                     scatter_kws={"s": 15},
                     line_kws={"color": "red"},
-                    order=3
+                    order=3,
+                    ci=None
                 )
 
                 ax.set_xlabel(
@@ -646,7 +647,11 @@ st.write(
 st.link_button("Voir la documentation", "https://github.com/Alfex-1/finance_volatility/blob/main/docs/Documentation.pdf")
 
 # Case à cocher pour "Analyse" et "Prédiction"
-option = st.radio("Choisissez le type d'étude que vous voulez mener", ["Analyse", "Prédiction"])
+st.sidebar.title("Paramètres")
+option = st.sidebar.radio(
+    "Choisissez le type d'étude que vous voulez mener",
+    ["Analyse", "Prédiction"]
+)
 
 # Entreprises
 url_sp500 = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
@@ -681,7 +686,7 @@ except (requests.RequestException, ValueError, IndexError) as e:
 all_tickers = pd.concat([tickers_sp500.rename(columns={'Symbol': 'Ticker', 'Security': 'Company'}), tickers_cac40], ignore_index=True)
 
 ticker_to_name = dict(zip(all_tickers['Ticker'], all_tickers['Company']))
-selected_companies = st.multiselect("Choisissez les entreprises à analyser", 
+selected_companies = st.sidebar.multiselect("Choisissez les entreprises à analyser", 
                                     all_tickers['Company'].tolist(),
                                     max_selections=4)
 
@@ -699,15 +704,15 @@ if option == "Analyse" and len(selected_companies) >=1:
     default_start_date = default_end_date - timedelta(days=365)  # 1 an avant la date de fin
 
     # Utiliser Streamlit pour afficher les dates avec les valeurs par défaut
-    start_date = st.date_input("Sélectionnez la date à partir de laquelle les analyses débuteront", value=default_start_date.date())
-    end_date = st.date_input("Sélectionnez la date à partir de laquelle les analyses se finiront", value=default_end_date.date())    
+    start_date = st.sidebar.date_input("Sélectionnez la date à partir de laquelle les analyses débuteront", value=default_start_date.date())
+    end_date = st.sidebar.date_input("Sélectionnez la date à partir de laquelle les analyses se finiront", value=default_end_date.date())    
 
     selected_tickers = all_tickers[all_tickers['Company'].isin(selected_companies)]['Ticker'].tolist()
     
     df = import_data(selected_tickers, start_date, end_date)
     
     if df is None:
-        st.warning("Aucune données disponibles n'ont pu être trouvé pour cette période et pour ces entreprises.")
+        st.sidebar.warning("Aucune données disponibles n'ont pu être trouvé pour cette période et pour ces entreprises.")
     else:
         # Interpolation
         df = interpolate(df, start_date=start_date, end_date=end_date).dropna()
@@ -715,38 +720,38 @@ if option == "Analyse" and len(selected_companies) >=1:
         # Prévenir des dates manquantes
         missing_days = (pd.to_datetime(end_date) - pd.to_datetime(df['Date'].max())).days
         if missing_days > 1:
-            st.warning(f"Attention : les données ne sont pas disponibles pour les {missing_days} derniers jours.")
+            st.sidebar.warning(f"Attention : les données ne sont pas disponibles pour les {missing_days} derniers jours.")
         elif missing_days == 1:
-            st.warning(f"Attention : les données ne sont pas disponibles pour le dernier jour.")
+            st.sidebar.warning(f"Attention : les données ne sont pas disponibles pour le dernier jour.")
 
         # Donner les vrais noms
         df['Ticker'] = df['Ticker'].map(ticker_to_name)
         
         # Lancer l'application
-        launch = st.button("Lancer")
+        launch = st.sidebar.button("Lancer")
     
 elif option == "Prédiction" and len(selected_companies) >=1:   
     # Importation des données
-    end_date = st.date_input("Sélectionnez la date à partir de laquelle les prédictions débuteront", value=pd.to_datetime("today"))
+    end_date = st.sidebar.date_input("Sélectionnez la date à partir de laquelle les prédictions débuteront", value=pd.to_datetime("today"))
     start_date = end_date - pd.Timedelta(days=365 + 31 * 6)
     
     # Choisir de visualiser les performances sur la base de test
-    visu_perf = st.toggle("Visualisation des performances de chaque modèle par rapport aux données rélles")
+    visu_perf = st.sidebar.toggle("Visualisation des performances de chaque modèle par rapport aux données rélles")
     if visu_perf:
-        st.warning("Attention : l'évaluation de chaque modèle peut prendre du temps")
+        st.sidebar.warning("Attention : l'évaluation de chaque modèle peut prendre du temps")
     
     # Choisir l'intervalle de confiance des prédictions
-    conf_int = st.slider("Choisissez le degré de certitude des prédictions (en %).", min_value=80, max_value=99, value=95)
+    conf_int = st.sidebar.slider("Choisissez le degré de certitude des prédictions (en %).", min_value=80, max_value=99, value=95)
     conf_int = conf_int/100
     
     # Choisir l'horizon des prédictions
-    horizon = st.slider("Choisissez l'horizon des prédictions (en jours)", min_value=2, max_value=15, value=7)    
+    horizon = st.sidebar.slider("Choisissez l'horizon des prédictions (en jours)", min_value=2, max_value=15, value=7)    
 
     selected_tickers = all_tickers[all_tickers['Company'].isin(selected_companies)]['Ticker'].tolist()
     df = import_data(selected_tickers, start_date, end_date)
     
     if df is None:
-        st.warning("Aucune donnée disponible n'a pu être trouvée pour cette période et pour ces entreprises.")
+        st.sidebar.warning("Aucune donnée disponible n'a pu être trouvée pour cette période et pour ces entreprises.")
     else:
         # Interpolation
         df = interpolate(df, start_date=start_date, end_date=end_date).dropna()
@@ -754,18 +759,18 @@ elif option == "Prédiction" and len(selected_companies) >=1:
         # Prévenir des dates manquantes
         missing_days = (pd.to_datetime(end_date) - pd.to_datetime(df['Date'].max())).days
         if missing_days > 1:
-            st.warning(f"Attention : les données ne sont pas disponibles pour les {missing_days} derniers jours. Ils seront alors compris dans l'horizon temporel que vous sélectionnerez.")
+            st.sidebar.warning(f"Attention : les données ne sont pas disponibles pour les {missing_days} derniers jours. Ils seront alors compris dans l'horizon temporel que vous sélectionnerez.")
         elif missing_days == 1:
-            st.warning(f"Attention : les données ne sont pas disponibles pour le dernier jour. Il sera alors compris dans l'horizon temporel que vous sélectionnerez.")
+            st.sidebar.warning(f"Attention : les données ne sont pas disponibles pour le dernier jour. Il sera alors compris dans l'horizon temporel que vous sélectionnerez.")
         
         # Donner les vrais noms
         df['Ticker'] = df['Ticker'].map(ticker_to_name)
         
         # Lancer l'application
-        launch = st.button("Lancer")
+        launch = st.sidebar.button("Lancer")
 
 elif len(selected_companies) == 0:
-    st.info("Veuillez sélectionner au moins une entreprise à analyser.")
+    st.sidebar.info("Veuillez sélectionner au moins une entreprise à analyser.")
 
 if option == "Analyse" and len(selected_companies) >= 1 and start_date and end_date and df is not None and launch:
     
