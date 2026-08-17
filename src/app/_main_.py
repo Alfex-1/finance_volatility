@@ -108,11 +108,11 @@ def visualize_correlation(df, object_viz="prix de clôture"):
         n = len(tickers)
 
         # ========================================================
-        # 1. MATRICE DE CORRÉLATION SPEARMAN
+        # 1. MATRICE DE CORRÉLATION PEARSON
         # ========================================================
 
         correlation_matrix = df.corr(
-            method="spearman"
+            method="pearson"
         ) * 100
 
         # Masque : on cache la diagonale + triangle supérieur
@@ -213,7 +213,8 @@ def visualize_correlation(df, object_viz="prix de clôture"):
                     ax=ax,
                     scatter_kws={"s": 15},
                     line_kws={"color": "red"},
-                    order=3,
+                    order=1,
+                    robust=True,
                     ci=None
                 )
 
@@ -244,7 +245,17 @@ def visualize_correlation(df, object_viz="prix de clôture"):
 
         st.pyplot(fig_reg)
 
-def fit_model(data, p, q, o, lags, mean, dist, vol):
+def downside_deviation(returns, threshold=0):
+    """Volatilité calculée uniquement sur les rendements négatifs (sous le seuil)."""
+    downside_returns = returns[returns < threshold]
+    return downside_returns.std() if len(downside_returns) > 0 else 0
+
+def upside_deviation(returns, threshold=0):
+    """Volatilité calculée uniquement sur les rendements positifs (au-dessus du seuil)."""
+    upside_returns = returns[returns > threshold]
+    return upside_returns.std() if len(upside_returns) > 0 else 0
+
+def fit_garch_model(data, p, q, o, lags, mean, dist, vol):
     """Ajuste un modèle ARCH/GARCH à une série temporelle avec des paramètres donnés.
 
     Cette fonction crée un modèle ARCH ou GARCH (ou ses variantes comme AR ou HAR), ajuste le modèle sur les données
@@ -273,21 +284,20 @@ def fit_model(data, p, q, o, lags, mean, dist, vol):
         if mean == 'AR':
             model = arch_model(data.dropna(), mean=mean, dist=dist, vol=vol, p=p, q=q, o=o, lags=lags)
         elif mean == 'HAR':
-            lags = [1, 5, 22]  # HAR fixe les lags
-            model = arch_model(data.dropna(), mean=mean, dist=dist, vol=vol, p=p, q=q, o=o, lags=lags)
+            model = arch_model(data.dropna(), mean=mean, dist=dist, vol=vol, p=p, q=q, o=o, lags=[1, 5, 22])
         else:
             model = arch_model(data.dropna(), mean=mean, dist=dist, vol=vol, p=p, q=q, o=o)
 
         # Ajuster le modèle
-        model_fit = model.fit(disp='off', options={'maxiter': 1000})
+        model_fit = model.fit(disp='off', options={'maxiter': 2000})
 
-        return p, q, lags, model_fit.aic, model_fit.bic
+        return model_fit, p, q, lags, model_fit.aic, model_fit.bic
 
     except Exception as e:
         print(f"Error in fitting model for p={p}, q={q}, lags={lags}: {e}")
-        return p, q, lags, None, None  # Retourner des valeurs par défaut en cas d'erreur
+        return None, p, q, lags, None, None  # Retourner des valeurs par défaut en cas d'erreur
 
-def ARCH_search(data, p_max, q_max, o=0, lags_max=7, vol='GARCH', mean='Constant', dist='normal', criterion='aic'):
+def ARCH_search(data, p_max, q_max, lags, o=0, vol='GARCH', mean='Constant', dist='normal', criterion='aic'):
     """Effectue une recherche exhaustive des meilleurs paramètres pour un modèle ARCH/GARCH sur les données.
 
     Cette fonction crée une grille de recherche pour les paramètres du modèle ARCH/GARCH (ordre p, q, et lags),
@@ -298,8 +308,8 @@ def ARCH_search(data, p_max, q_max, o=0, lags_max=7, vol='GARCH', mean='Constant
         data (pd.Series): Série temporelle des données à ajuster avec le modèle ARCH/GARCH.
         p_max (int): Valeur maximale de l'ordre p pour le modèle ARCH.
         q_max (int): Valeur maximale de l'ordre q pour le modèle GARCH.
-        o (int, optional): Ordre de l'élément GJRGARCH ou autre forme (par défaut, 0). 
-        lags_max (int, optional): Valeur maximale pour l'ordre des lags dans le modèle AR ou HAR (par défaut, 7).
+        lags (int or list): Lags du modèle AR ou HAR.
+        o (int, optional): Ordre de l'élément GJRGARCH ou autre forme (par défaut, 0).
         vol (str, optional): Type de modèle de volatilité, 'GARCH' par défaut mais peut aussi être 'ARCH', 'FIGARCH', etc.
         mean (str, optional): Type de moyenne à utiliser dans le modèle. Par défaut, 'Constant' mais peut être 'AR' ou 'HAR'.
         dist (str, optional): Type de distribution des résidus, 'normal' par défaut mais peut être 't' ou d'autres.
@@ -313,17 +323,19 @@ def ARCH_search(data, p_max, q_max, o=0, lags_max=7, vol='GARCH', mean='Constant
     """
     p_range = range(1, p_max + 1) if vol != 'FIGARCH' else [0, 1]
     q_range = range(1, q_max + 1) if vol != 'FIGARCH' else [0, 1]
-    lags_range = range(1, lags_max + 1)
 
     # Définir la grille de paramètres
-    param_grid = {'p': p_range, 'q': q_range, 'lags': lags_range}
+    param_grid = {'p': p_range, 'q': q_range}
     grid = ParameterGrid(param_grid)
 
     # Utilisation de joblib pour paralléliser le calcul
-    results = Parallel(n_jobs=-1)(  # -1 utilise tous les cœurs disponibles
-        delayed(fit_model)(data, params['p'], params['q'], o, params['lags'] if mean in ['AR', 'HAR'] else None, mean, dist, vol)
+    results = Parallel(n_jobs=-1)(
+        delayed(fit_garch_model)(data, params['p'], params['q'], o, lags if mean in ['AR', 'HAR'] else None, mean, dist, vol)
         for params in grid
     )
+    
+    # Enlever le model fit des résultats pour ne garder que les paramètres et les critères
+    results = [result[1:] for result in results]
 
     # Convertir les résultats en DataFrame
     results_df = pd.DataFrame(results, columns=['p', 'q', 'lags', 'AIC', 'BIC'])
@@ -335,9 +347,8 @@ def ARCH_search(data, p_max, q_max, o=0, lags_max=7, vol='GARCH', mean='Constant
     best_params = results_df.iloc[0]
     p = int(best_params['p'])
     q = int(best_params['q'])
-    lags = best_params['lags']
 
-    return p, q, lags
+    return p, q
 
 def model_validation(model):
     """
@@ -350,6 +361,9 @@ def model_validation(model):
     Returns:
         pd.DataFrame: Une DataFrame contenant les résultats des tests de validation des hypothèses, y compris les p-values et un indicateur de respect des hypothèses. 
         Les hypothèses testées incluent la normalité des résidus, l'autocorrélation des résidus, l'autocorrélation des résidus au carré, l'effet ARCH et la stationnarité conditionnelle.
+        Un attribut suggested_ar_lags est également retourné, indiquant les lags AR nécessaires
+        pour absorber l'autocorrélation des résidus (utile si l'hypothèse 'Autocorrélation des
+        résidus' est violée).
     
     Notes:
         - La stationnarité conditionnelle est vérifiée en s'assurant que la somme des coefficients alpha et beta du modèle GARCH est inférieure à 1. Aucune P-Value n'y est donc associée.
@@ -379,6 +393,15 @@ def model_validation(model):
     results['Hypothèse'].append('Autocorrélation des résidus')
     results['Respect'].append(1 if all(p >= 0.05 for p in autocorr_resid_pvalues) else 0)
     results['P-Value'].append(autocorr_resid_pvalues.tolist())
+
+    # Lags AR suggérés en cas d'autocorrélation détectée
+    # On prend tous les lags où le test Ljung-Box est significatif
+    # (p < 0.05), jusqu'au dernier lag concerné
+    significant_lags = [
+        lag for lag, p in zip(range(1, 13), autocorr_resid_pvalues)
+        if p < 0.05
+    ]
+    suggested_ar_lags = significant_lags if significant_lags else [1]
     
     # 3. Autocorrélation des résidus au carré (p-value >= 0.05 pour toutes les lags)
     lb_resid_sq = acorr_ljungbox(resid**2, lags=[i for i in range(1, 13)], return_df=True)
@@ -394,12 +417,15 @@ def model_validation(model):
     results['P-Value'].append(lm_test[1])
     
     # 5. Stationnarité conditionnelle
+    persistence = np.round(float(np.sum(params, axis=0).iloc[0]), 3)
     results['Hypothèse'].append('Stationnarité conditionnelle')
-    results['Respect'].append(1 if float(np.sum(params, axis=0).iloc[0]) < 1 else 0)
-    results['P-Value'].append("None")
+    results['Respect'].append(1 if persistence < 1 else 0)
+    results['P-Value'].append(None)
     
     # Création d'une DataFrame avec les résultats
     df_results = pd.DataFrame(results)
+    df_results.attrs['suggested_ar_lags'] = suggested_ar_lags
+
     return df_results
 
 def distribution(resid):
@@ -626,12 +652,10 @@ def mean_dist(hyp_df, data, kurtosis, skewness):
     if pvalue_normal > 0.1:
         dist='normal'
     else:
-        if (kurtosis >= 1.1 or kurtosis <= -0.6) and abs(skewness) >= 0.3:
+        if abs(skewness) >= 0.3:
             dist='skewt'
         elif (kurtosis >= 1.1 or kurtosis <= -0.6) and abs(skewness) < 0.3:
             dist = 't'
-        elif (kurtosis <= 1.1 and kurtosis >= -0.6) and abs(skewness) >= 0.3:
-            dist = 'skewt'
         else:
             dist='ged'
 
@@ -678,6 +702,7 @@ try:
     tables = pd.read_html(StringIO(response.text))
     cac40_df = tables[4]
     tickers_cac40 = cac40_df[['Ticker', 'Company']]
+    tickers_cac40['Ticker'] = tickers_cac40['Ticker'].str.split('.').str[0]
 except (requests.RequestException, ValueError, IndexError) as e:
     st.error("Impossible de récupérer la liste des entreprises du CAC 40. Veuillez réessayer plus tard.")
     st.stop()
@@ -692,7 +717,7 @@ selected_companies = st.sidebar.multiselect("Choisissez les entreprises à analy
 
 start_date = None
 end_date = None
-visu_perf=None
+visu_perf = None
 launch = False
 
 if option == "Analyse" and len(selected_companies) >=1:
@@ -901,48 +926,77 @@ if option == "Analyse" and len(selected_companies) >= 1 and start_date and end_d
         mean_list.append(mean)
         std_list.append(std)
 
-    # Créer la DataFrame des performances
+    # Créer la DataFrame des performances et des risques
+        tickers = df_returns['Ticker'].unique()
+        mean_list = []
+        downside_list = []
+        upside_list = []
+
+        for ticker in tickers:
+            returns = df_returns[df_returns['Ticker'] == ticker]['Returns']
+            mean_list.append(returns.mean())
+            downside_list.append(downside_deviation(returns))
+            upside_list.append(upside_deviation(returns))
+    
     df_perf = pd.DataFrame({
         "Ticker": df['Ticker'].unique(),
         "Moyenne": mean_list,
-        "Ecart-type": std_list})
+        "Ecart-type": std_list,
+        "Risque négatif": downside_list,
+        "Risque positif": upside_list
+    })
 
     # Visualiser les risques et les performances
-    df_perf_melted = pd.melt(df_perf, id_vars=["Ticker"], value_vars=["Moyenne", "Ecart-type"], 
-                            var_name="Mesure", value_name="Valeur")
-    df_perf_melted["Mesure"] = df_perf_melted["Mesure"].replace({
-        "Moyenne": "Performance",
-        "Ecart-type": "Risque"
-    })
-    df_perf_melted = df_perf_melted.sort_values(
-        by=["Mesure", "Valeur"], 
-        ascending=[True, False]
+    df_perf = df_perf.sort_values(by="Moyenne", ascending=False)
+    ticker_order = df_perf["Ticker"].tolist()
+    
+    df_perf_melted = pd.melt(
+        df_perf,
+        id_vars=["Ticker"],
+        value_vars=["Moyenne", "Ecart-type", "Risque négatif", "Risque positif"],
+        var_name="Mesure",
+        value_name="Valeur"
     )
+    
+    
+    df_perf_melted["Mesure"] = df_perf_melted["Mesure"].replace({
+        "Moyenne": "Rendements",
+        "Ecart-type": "Volatilité",
+        "Risque négatif": "Volatilité baissière",
+        "Risque positif": "Volatilité haussière"
+    })
+
+    couleurs = {
+        "Rendements": "#4C78A8",
+        "Volatilité": "#B0B0B0",
+        "Volatilité baissière": "#E45756",
+        "Volatilité haussière": "#54A24B"
+    }
 
     fig = go.Figure()
 
-    mesures = df_perf_melted["Mesure"].unique()
-
-    for mesure in mesures:
-        df_m = df_perf_melted[df_perf_melted["Mesure"] == mesure]
+    for mesure in couleurs.keys():
+        df_m = df_perf_melted[df_perf_melted["Mesure"] == mesure].set_index("Ticker").loc[ticker_order].reset_index()
 
         fig.add_trace(
             go.Bar(
                 x=df_m["Ticker"],
                 y=df_m["Valeur"],
                 name=mesure,
+                marker_color=couleurs[mesure],
                 text=df_m["Valeur"].round(2),
                 textposition="outside"
             )
         )
 
     fig.update_layout(
-        title="Performances et risques moyens des actions par entreprise",
+        title="Rendements et volatilité moyens des actions par entreprise",
         xaxis_title=None,
         yaxis_title="Mesures en %",
         barmode="group",
         template="plotly_white",
-        legend_title="Mesure"
+        legend_title="Mesure",
+        xaxis=dict(categoryorder="array", categoryarray=ticker_order)
     )
 
     st.plotly_chart(fig, use_container_width=True)
@@ -1028,27 +1082,15 @@ elif (
         for ticker in df["Ticker"].unique():
             ticker_data = df[df["Ticker"] == ticker].copy()
 
-            ticker_data["Returns"] = (
-                ticker_data["Close"]
-                .pct_change(fill_method=None)
-                * 100
-            )
+            ticker_data["Returns"] = ticker_data["Close"].pct_change(fill_method=None)* 100
 
             df_list.append(ticker_data)
 
         # Combiner toutes les DataFrames
-        df = (
-            pd.concat(df_list, ignore_index=True)
-            .dropna()
-        )
+        df = pd.concat(df_list, ignore_index=True).dropna()
 
-        # Mise sous forme matricielle :
-        # Date x Entreprise
-        df_pivot = df.pivot(
-            index="Date",
-            columns="Ticker",
-            values="Returns"
-        )
+        # Mise sous forme matricielle
+        df_pivot = df.pivot(index="Date", columns="Ticker", values="Returns")
 
         # ============================================================
         # 2. INITIALISATION
@@ -1056,92 +1098,10 @@ elif (
 
         model_summary = []
         model_val = []
-
         progress_bar = st.progress(0)
         status_text = st.empty()
-
-        # Une entreprise nécessite :
-        #
-        # 1. Recherche initiale
-        # 2. Validation initiale
-        # 3. Correction éventuelle
-        # 4. Prédiction
-        #
-        # Si visu_perf est activé, une étape supplémentaire
-        # est nécessaire pour les prévisions glissantes.
-
-        total_steps = (
-            len(df_pivot.columns) * (5 if visu_perf else 4)
-        )
-
+        total_steps = len(df_pivot.columns) * (5 if visu_perf else 4)
         current_step = 0
-
-        # ============================================================
-        # FONCTION UTILITAIRE :
-        # CONSTRUCTION + ESTIMATION D'UN MODÈLE
-        # ============================================================
-
-        def fit_garch_model(
-            train,
-            p,
-            q,
-            mean,
-            dist="normal",
-            lag=None,
-            maxiter=1000
-        ):
-            """
-            Construit et estime un modèle GARCH.
-            """
-
-            if mean == "HAR":
-
-                lag = [1, 5, 22]
-
-                model = arch_model(
-                    train,
-                    vol="GARCH",
-                    p=p,
-                    q=q,
-                    mean=mean,
-                    dist=dist,
-                    lags=lag,
-                    rescale=False
-                )
-
-            elif mean == "AR":
-
-                model = arch_model(
-                    train,
-                    vol="GARCH",
-                    p=p,
-                    q=q,
-                    mean=mean,
-                    dist=dist,
-                    lags=lag,
-                    rescale=False
-                )
-
-            else:
-
-                lag = None
-
-                model = arch_model(
-                    train,
-                    vol="GARCH",
-                    p=p,
-                    q=q,
-                    mean=mean,
-                    dist=dist,
-                    rescale=False
-                )
-
-            model = model.fit(
-                disp="off",
-                options={"maxiter": maxiter}
-            )
-
-            return model, lag
 
         # ============================================================
         # 3. BOUCLE SUR LES ENTREPRISES
@@ -1165,15 +1125,10 @@ elif (
             current_step += 1
             progress_bar.progress(current_step / total_steps)
 
-            status_text.text(
-                f"Recherche du modèle initial pour {col}..."
-            )
+            status_text.text(f"Recherche du modèle initial pour {col}...")
 
             # Test t de moyenne nulle
-            _, p_value_ttest = ttest_1samp(
-                train,
-                popmean=0
-            )
+            _, p_value_ttest = ttest_1samp(train, popmean=0)
 
             if p_value_ttest >= 0.05:
                 initial_mean = "Zero"
@@ -1184,10 +1139,11 @@ elif (
             # ÉTAPE 2 : RECHERCHE INITIALE DE p ET q
             # ========================================================
 
-            p, q, _ = ARCH_search(
+            p, q = ARCH_search(
                 train,
                 p_max=9,
                 q_max=9,
+                lags=None,
                 vol="GARCH",
                 mean=initial_mean,
                 dist="normal",
@@ -1201,15 +1157,10 @@ elif (
             # ÉTAPE 3 : ESTIMATION DU MODÈLE INITIAL
             # ========================================================
 
-            model, initial_lag = fit_garch_model(
-                train=train,
-                p=p,
-                q=q,
-                mean=initial_mean,
-                dist=initial_dist,
-                lag=None,
-                maxiter=1000
-            )
+            model = fit_garch_model(
+                train, p=p, q=q, o=0,
+                vol="GARCH", mean=initial_mean,
+                dist=initial_dist, lags=None)[0]
 
             # ========================================================
             # ÉTAPE 4 : DIAGNOSTIC DU MODÈLE INITIAL
@@ -1218,9 +1169,7 @@ elif (
             current_step += 1
             progress_bar.progress(current_step / total_steps)
 
-            status_text.text(
-                f"Validation du modèle initial pour {col}..."
-            )
+            status_text.text(f"Validation du modèle initial pour {col}...")
 
             # Résidus
             resid = model.resid
@@ -1232,9 +1181,7 @@ elif (
             kurt_val, skewness_val = distribution(resid)
 
             # Vérification globale
-            hypotheses_ok = all(
-                df_val_initial["Respect"]
-            )
+            hypotheses_ok = all(df_val_initial["Respect"])
 
             # ========================================================
             # CAS 1 :
@@ -1258,21 +1205,13 @@ elif (
 
                 current_step += 1
                 progress_bar.progress(current_step / total_steps)
-
-                status_text.text(
-                    f"Correction de la spécification pour {col}..."
-                )
+                status_text.text(f"Correction de la spécification pour {col}...")
 
                 # ----------------------------------------------------
                 # Détermination de la nouvelle moyenne et distribution
                 # ----------------------------------------------------
 
-                suggested_mean, suggested_dist = mean_dist(
-                    df_val_initial,
-                    train,
-                    kurt_val,
-                    skewness_val
-                )
+                suggested_mean, suggested_dist = mean_dist(df_val_initial, train, kurt_val, skewness_val)
 
                 # ----------------------------------------------------
                 # Identification précise des problèmes
@@ -1315,20 +1254,11 @@ elif (
                 )
 
                 # ----------------------------------------------------
-                # Modification de la moyenne ?
+                # Modification de la moyenne et/ou de la distribution ?
                 # ----------------------------------------------------
 
-                mean_changed = (
-                    suggested_mean != initial_mean
-                )
-
-                # ----------------------------------------------------
-                # Modification de la distribution ?
-                # ----------------------------------------------------
-
-                dist_changed = (
-                    suggested_dist != initial_dist
-                )
+                mean_changed = suggested_mean != initial_mean
+                dist_changed = suggested_dist != initial_dist
 
                 # ----------------------------------------------------
                 # Problème concernant la dynamique de variance ?
@@ -1337,56 +1267,27 @@ elif (
                 # p et q.
                 # ----------------------------------------------------
 
-                variance_problem = (
-                    squared_residual_autocorrelation
-                    or arch_effect
-                )
+                variance_problem = squared_residual_autocorrelation or arch_effect
 
                 # ====================================================
                 # CAS 2A :
                 # UNIQUEMENT LA DISTRIBUTION CHANGE
                 # ====================================================
 
-                if (
-                    dist_changed
-                    and not mean_changed
-                    and not variance_problem
-                ):
+                if dist_changed and not mean_changed and not variance_problem:
 
-                    # IMPORTANT :
-                    #
-                    # On conserve p et q.
-                    #
-                    # On ne relance PAS ARCH_search().
-                    #
-                    # On modifie uniquement la distribution des
-                    # innovations.
 
+                    # On conserve p et q. On modifie uniquement la distribution des innovations
                     final_mean = initial_mean
                     final_dist = suggested_dist
+                    final_lag = None # Puisque moyenne = Constant ou Zero, pas de lag à considérer
 
-                    final_lag = None
-
-                    model, final_lag = fit_garch_model(
-                        train=train,
-                        p=p,
-                        q=q,
-                        mean=final_mean,
-                        dist=final_dist,
-                        lag=None,
-                        maxiter=1000
-                    )
-
+                    model = fit_garch_model(train, p=p, q=q, o=0, vol="GARCH", mean=final_mean, dist=final_dist, lags=None)[0]
                     df_val_final = model_validation(model)
 
                 # ====================================================
                 # CAS 2B :
-                # LA MOYENNE CHANGE
-                #
-                # Exemple :
-                # Constant -> AR
-                # Constant -> HAR
-                #
+                # LA MOYENNE CHANGE (on passe à AR ou HAR)
                 # Dans ce cas, on recherche à nouveau p et q.
                 # ====================================================
 
@@ -1400,45 +1301,26 @@ elif (
                     # -----------------------------------------------
 
                     if final_mean == "AR":
-
-                        p, q, _ = ARCH_search(
-                            train,
-                            p_max=9,
-                            q_max=9,
-                            vol="GARCH",
-                            mean=final_mean,
-                            dist=final_dist,
-                            criterion="aic"
-                        )
-
-                        # Le nombre de retards doit être déterminé
-                        # selon ta fonction mean_dist / ta logique AR.
-                        #
-                        # Si mean_dist renvoie uniquement "AR",
-                        # on conserve ici un lag standard.
-                        #
-                        # À adapter si ta fonction retourne également
-                        # explicitement le nombre de retards.
-
-                        final_lag = 1
+                        
+                        final_lag = df_val_initial.attrs.get('suggested_ar_lags', [1])
+                        
+                        p, q = ARCH_search(train, p_max=9, q_max=9,
+                            lags=final_lag, vol="GARCH",
+                            mean=final_mean, dist=final_dist,
+                            criterion="aic")
 
                     # -----------------------------------------------
                     # HAR
                     # -----------------------------------------------
 
                     elif final_mean == "HAR":
-
-                        p, q, _ = ARCH_search(
-                            train,
-                            p_max=9,
-                            q_max=9,
-                            vol="GARCH",
-                            mean=final_mean,
-                            dist=final_dist,
-                            criterion="aic"
-                        )
-
+                        
                         final_lag = [1, 5, 22]
+
+                        p, q = ARCH_search(train, p_max=9, q_max=9,
+                            lags=final_lag, vol="GARCH",
+                            mean=final_mean, dist=final_dist,
+                            criterion="aic")
 
                     # -----------------------------------------------
                     # Constant / Zero
@@ -1448,26 +1330,17 @@ elif (
 
                         final_lag = None
 
-                        p, q, _ = ARCH_search(
-                            train,
-                            p_max=9,
-                            q_max=9,
-                            vol="GARCH",
-                            mean=final_mean,
-                            dist=final_dist,
-                            criterion="aic"
-                        )
+                        p, q = ARCH_search(train,
+                            p_max=9, q_max=9,
+                            lags=final_lag, vol="GARCH",
+                            mean=final_mean, dist=final_dist,
+                            criterion="aic")
 
                     # Estimation du nouveau modèle
-                    model, final_lag = fit_garch_model(
-                        train=train,
-                        p=p,
-                        q=q,
-                        mean=final_mean,
-                        dist=final_dist,
-                        lag=final_lag,
-                        maxiter=1000
-                    )
+                    model = fit_garch_model(
+                        train, p=p, q=q, o=0,
+                        vol="GARCH", mean=final_mean,
+                        dist=final_dist, lags=final_lag)[0]
 
                     # Validation finale
                     df_val_final = model_validation(model)
@@ -1491,57 +1364,38 @@ elif (
                     # ------------------------------------------------
 
                     if final_mean == "AR":
+                        
+                        final_lag = df_val_initial.attrs.get('suggested_ar_lags', [1])
 
-                        p, q, _ = ARCH_search(
-                            train,
-                            p_max=9,
-                            q_max=9,
-                            vol="GARCH",
-                            mean=final_mean,
-                            dist=final_dist,
-                            criterion="aic"
-                        )
+                        p, q = ARCH_search(train, p_max=9, q_max=9,
+                            lags=final_lag, vol="GARCH",
+                            mean=final_mean, dist=final_dist,
+                            criterion="aic")
 
-                        final_lag = 1
 
                     elif final_mean == "HAR":
-
-                        p, q, _ = ARCH_search(
-                            train,
-                            p_max=9,
-                            q_max=9,
-                            vol="GARCH",
-                            mean=final_mean,
-                            dist=final_dist,
-                            criterion="aic"
-                        )
-
+                        
                         final_lag = [1, 5, 22]
+
+                        p, q = ARCH_search(train, p_max=9, q_max=9,
+                            lags=final_lag, vol="GARCH",
+                            mean=final_mean, dist=final_dist,
+                            criterion="aic")
 
                     else:
 
-                        p, q, _ = ARCH_search(
-                            train,
-                            p_max=9,
-                            q_max=9,
-                            vol="GARCH",
-                            mean=final_mean,
-                            dist=final_dist,
-                            criterion="aic"
-                        )
-
                         final_lag = None
+                        
+                        p, q = ARCH_search(train, p_max=9, q_max=9,
+                            lags=final_lag, vol="GARCH",
+                            mean=final_mean, dist=final_dist,
+                            criterion="aic")
 
                     # Estimation
-                    model, final_lag = fit_garch_model(
-                        train=train,
-                        p=p,
-                        q=q,
-                        mean=final_mean,
-                        dist=final_dist,
-                        lag=final_lag,
-                        maxiter=1000
-                    )
+                    model = fit_garch_model(
+                        train, p=p, q=q, o=0,
+                        vol="GARCH", mean=final_mean,
+                        dist=final_dist, lags=final_lag)[0]
 
                     # Validation finale
                     df_val_final = model_validation(model)
@@ -1553,43 +1407,17 @@ elif (
                 # ====================================================
 
                 else:
-
-                    # On conserve la structure obtenue.
-                    #
-                    # Il ne sert à rien de relancer arbitrairement
-                    # ARCH_search() si le problème n'est pas lié à
-                    # la dynamique de variance.
-
+                    # On conserve la structure obtenue
                     final_mean = suggested_mean
                     final_dist = suggested_dist
                     final_lag = None
 
-                    model, final_lag = fit_garch_model(
-                        train=train,
-                        p=p,
-                        q=q,
-                        mean=final_mean,
-                        dist=final_dist,
-                        lag=final_lag,
-                        maxiter=1000
-                    )
+                    model = fit_garch_model(
+                        train, p=p, q=q, o=0,
+                        vol="GARCH", mean=final_mean,
+                        dist=final_dist, lags=final_lag)[0]
 
                     df_val_final = model_validation(model)
-
-            # ========================================================
-            # À CE STADE :
-            #
-            # model = modèle FINAL
-            # p, q = ordres du modèle final
-            # final_mean = moyenne finale
-            # final_dist = distribution finale
-            # final_lag = retards éventuels
-            # df_val_final = validation finale
-            #
-            # ON NE REFAIT PAS UNE NOUVELLE RECHERCHE.
-            #
-            # Même si une hypothèse reste violée, on la signale.
-            # ========================================================
 
             # ========================================================
             # 5. PRÉVISIONS GLISSANTES
@@ -1598,24 +1426,15 @@ elif (
             if visu_perf:
 
                 current_step += 1
-                progress_bar.progress(
-                    current_step / total_steps
-                )
-
-                status_text.text(
-                    f"Prévisions glissantes pour {col}..."
-                )
+                progress_bar.progress(current_step / total_steps)
+                status_text.text(f"Prévisions glissantes pour {col}...")
 
                 rolling_pred(
                     real_values=df_pivot[col],
                     test_size=test_size,
-                    vol="GARCH",
-                    p=p,
-                    q=q,
-                    mean=final_mean,
-                    dist=final_dist,
-                    col=col,
-                    lag=final_lag
+                    vol="GARCH", p=p, q=q,
+                    mean=final_mean, dist=final_dist,
+                    col=col, lag=final_lag
                 )
 
             # ========================================================
@@ -1623,26 +1442,16 @@ elif (
             # ========================================================
 
             current_step += 1
-            progress_bar.progress(
-                current_step / total_steps
-            )
+            progress_bar.progress(current_step / total_steps)
 
-            status_text.text(
-                f"Prédictions pour {col}..."
-            )
+            status_text.text(f"Prédictions pour {col}...")
 
             forecasting_volatility(
-                data=df_pivot[col],
-                model=model,
-                vol="GARCH",
-                p=p,
-                q=q,
-                mean=final_mean,
-                dist=final_dist,
-                col=col,
-                lag=final_lag,
-                horizon=horizon,
-                conf_level=conf_int
+                data=df_pivot[col], col=col,
+                model=model, vol="GARCH",
+                p=p, q=q,
+                mean=final_mean, dist=final_dist, lag=final_lag,
+                horizon=horizon, conf_level=conf_int
             )
 
             # ========================================================
@@ -1671,10 +1480,7 @@ elif (
                 Retourne Oui / Non en fonction du résultat
                 du test correspondant.
                 """
-                values = df_validation.loc[
-                    df_validation["Hypothèse"] == hypothesis,
-                    "Respect"
-                ]
+                values = df_validation.loc[df_validation["Hypothèse"] == hypothesis, "Respect"]
 
                 if len(values) == 0:
                     return "N/A"
@@ -1729,37 +1535,19 @@ elif (
         model_val_df = pd.DataFrame(model_val)
 
         if not model_val_df.empty:
-            model_val_df.set_index(
-                "Entreprise",
-                inplace=True
-            )
+            model_val_df.set_index("Entreprise", inplace=True)
 
         # ============================================================
         # 11. AFFICHAGE
         # ============================================================
 
-        st.markdown(
-            "<hr>",
-            unsafe_allow_html=True
-        )
+        st.markdown("<hr>", unsafe_allow_html=True)
+        
+        st.write("Veuillez trouver ci-dessous les modèles de volatilité (GARCH) utilisés pour les prédictions de chaque entreprise.")
+        st.dataframe( model_summary_df)
 
-        st.write(
-            "Veuillez trouver ci-dessous les modèles de volatilité "
-            "(GARCH) utilisés pour les prédictions de chaque entreprise."
-        )
-
-        st.dataframe(
-            model_summary_df
-        )
-
-        st.write(
-            "Veuillez trouver ci-dessous le résumé du respect des "
-            "hypothèses statistiques associées à chaque modèle final."
-        )
-
-        st.dataframe(
-            model_val_df
-        )
+        st.write("Veuillez trouver ci-dessous le résumé du respect des hypothèses statistiques associées à chaque modèle final.")
+        st.dataframe( model_val_df)
 
         # ============================================================
         # 12. NETTOYAGE
