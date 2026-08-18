@@ -686,7 +686,7 @@ def mean_dist(hyp_df, data, kurtosis, skewness):
 
     return str(mean), str(dist)
 
-st.set_page_config(page_title="Voltra", page_icon="📈", layout="wide")
+st.set_page_config(page_title="Voltra", page_icon=Image.open("logo_voltra.png"), layout="wide")
 
 st.title("Voltra")
 st.write(
@@ -700,7 +700,7 @@ st.write(
 st.link_button("Voir la documentation", "https://github.com/Alfex-1/finance_volatility/blob/main/docs/Documentation.pdf")
 
 # Logo de Voltra
-st.sidebar.image(Image.open("logo_voltra.png"), width=200)
+st.sidebar.image(Image.open("logo_voltra.png"), width=150)
 
 # Case à cocher pour "Analyse" et "Prédiction"
 st.sidebar.title("Paramètres")
