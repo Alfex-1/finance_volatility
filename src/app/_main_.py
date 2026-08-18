@@ -13,6 +13,7 @@ import streamlit as st
 import requests
 from joblib import Parallel, delayed
 from io import StringIO
+from PIL import Image
 
 def import_data(index, start_date, end_date):
     """
@@ -298,7 +299,7 @@ def fit_garch_model(data, p, q, o, lags, mean, dist, vol):
         print(f"Error in fitting model for p={p}, q={q}, lags={lags}: {e}")
         return None, None, p, q, lags, None, None  # Retourner des valeurs par défaut en cas d'erreur
 
-def ARCH_search(data, p_max, q_max, lags, o=0, vol='GARCH', mean='Constant', dist='normal', criterion='aic'):
+def ARCH_search(data, p_max, q_max, lags, p_min=2, q_min=2, o=0, vol='GARCH', mean='Constant', dist='normal', criterion='aic'):
     """Effectue une recherche exhaustive des meilleurs paramètres pour un modèle ARCH/GARCH sur les données.
 
     Cette fonction crée une grille de recherche pour les paramètres du modèle ARCH/GARCH (ordre p, q, et lags),
@@ -322,15 +323,15 @@ def ARCH_search(data, p_max, q_max, lags, o=0, vol='GARCH', mean='Constant', dis
             - q (int): Ordre de l'élément GARCH (q).
             - lags (list or None): Liste des lags utilisés dans le modèle AR ou HAR.
     """
-    p_range = range(1, p_max + 1) if vol != 'FIGARCH' else [0, 1]
-    q_range = range(1, q_max + 1) if vol != 'FIGARCH' else [0, 1]
+    p_range = range(p_min, p_max + 1) if vol != 'FIGARCH' else [0, 1]
+    q_range = range(q_min, q_max + 1) if vol != 'FIGARCH' else [0, 1]
 
     # Définir la grille de paramètres
     param_grid = {'p': p_range, 'q': q_range}
     grid = ParameterGrid(param_grid)
 
     # Utilisation de joblib pour paralléliser le calcul
-    results = Parallel(n_jobs=-1)(
+    results = Parallel(n_jobs=3)(
         delayed(fit_garch_model)(data, params['p'], params['q'], o, lags if mean in ['AR', 'HAR'] else None, mean, dist, vol)
         for params in grid
     )
@@ -350,8 +351,6 @@ def ARCH_search(data, p_max, q_max, lags, o=0, vol='GARCH', mean='Constant', dis
 
         if not stationary_df.empty:
             results_df = stationary_df
-        else :
-            st.warning("Impossibile de trouver un modèle pertinent")
 
     # Trier les résultats par le critère spécifié
     results_df = results_df.sort_values(by=criterion.upper())
@@ -518,7 +517,7 @@ def rolling_pred(real_values, test_size, vol, p, q, mean, dist, lag, col):
         Un graphique des valeurs réelles de la série et des prévisions glissantes.
     """
     rolling_predictions = []
-    rolling_predictions = Parallel(n_jobs=-1, verbose=0)(  # Prédictions parallèles
+    rolling_predictions = Parallel(n_jobs=3, verbose=0)(  # Prédictions parallèles
         delayed(forecast_volatility)(i, real_values, test_size, vol, p, q, mean, dist, lag) for i in range(test_size)
     )
 
@@ -687,14 +686,21 @@ def mean_dist(hyp_df, data, kurtosis, skewness):
 
     return str(mean), str(dist)
 
-st.title("Analyse des prix et des rendements des actions de plusieurs entreprises et prédiction des risques associés")
+st.set_page_config(page_title="Voltra", page_icon="📈", layout="wide")
+
+st.title("Voltra")
 st.write(
-    ("Bienvenue sur l'application ! Vous pouvez y visualiser le prix des actions des entreprises du S&P 500 et du CAC40 ainsi que leurs rendements quotidiens. "
-     "Vous avez également la possibilité de consulter les prédictions des risques (volatilité) associés aux investissements dans les actions de ces entreprises, à court terme.")
-)
+    "Bienvenue sur Voltra ! Vous pouvez y visualiser le prix des actions "
+    "des entreprises du S&P 500 et du CAC 40 ainsi que leurs rendements "
+    "quotidiens. Vous avez également la possibilité de consulter les "
+    "prédictions des risques (volatilité) associés aux investissements "
+    "dans les actions de ces entreprises, à court terme.")
 
 # Lien pour voir la documentation
 st.link_button("Voir la documentation", "https://github.com/Alfex-1/finance_volatility/blob/main/docs/Documentation.pdf")
+
+# Logo de Voltra
+st.sidebar.image(Image.open("logo_voltra.png"), width=200)
 
 # Case à cocher pour "Analyse" et "Prédiction"
 st.sidebar.title("Paramètres")
@@ -1259,6 +1265,16 @@ elif (
 
                     model = fit_garch_model(train, p=p, q=q, o=0, vol="GARCH", mean=final_mean, dist=final_dist, lags=None)[0]
                     df_val_final = model_validation(model)
+                    
+                    # Si stationnarité violée, alors on refait une recherche de p et q
+                    if not df_val_final.loc[df_val_final['Hypothèse'] == 'Stationnarité conditionnelle', 'Respect'].values[0]:
+                        p, q = ARCH_search(train, p_max=8, q_max=8,
+                            lags=None, vol="GARCH",
+                            mean=final_mean, dist=final_dist,
+                            criterion="aic")
+
+                        model = fit_garch_model(train, p=p, q=q, o=0, vol="GARCH", mean=final_mean, dist=final_dist, lags=None)[0]
+                        df_val_final = model_validation(model)
 
                 # ====================================================
                 # CAS 2B :
