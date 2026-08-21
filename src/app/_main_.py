@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
-from scipy.stats import shapiro, ttest_1samp, norm
+from scipy.stats import kstest, shapiro, ttest_1samp, norm
 from statsmodels.stats.diagnostic import acorr_ljungbox, het_arch
 from sklearn.model_selection import ParameterGrid
 from arch import arch_model
@@ -288,7 +288,7 @@ def fit_garch_model(data, p, q, o, lags, mean, dist, vol):
             model = arch_model(data.dropna(), mean=mean, dist=dist, vol=vol, p=p, q=q, o=o)
         
         # Ajuster le modèle
-        model_fit = model.fit(disp='off', options={'maxiter': 2000})
+        model_fit = model.fit(disp='off', options={'maxiter': 5000})
         params = model_fit.params
         alpha_beta = params[params.index.str.contains('alpha|beta')]
         sum_params = np.round(float(alpha_beta.sum()), 4)
@@ -299,7 +299,7 @@ def fit_garch_model(data, p, q, o, lags, mean, dist, vol):
         print(f"Error in fitting model for p={p}, q={q}, lags={lags}: {e}")
         return None, None, p, q, lags, None, None  # Retourner des valeurs par défaut en cas d'erreur
 
-def ARCH_search(data, p_max, q_max, lags, p_min=2, q_min=2, o=0, vol='GARCH', mean='Constant', dist='normal', criterion='aic'):
+def ARCH_search(data, p_max, q_max, lags, p_min=3, q_min=3, o=0, vol='GARCH', mean='Constant', dist='normal', criterion='aic'):
     """Effectue une recherche exhaustive des meilleurs paramètres pour un modèle ARCH/GARCH sur les données.
 
     Cette fonction crée une grille de recherche pour les paramètres du modèle ARCH/GARCH (ordre p, q, et lags),
@@ -386,10 +386,11 @@ def model_validation(model):
         'Respect': [],
         'P-Value':[]
     }
-    
+
     # Résidus et paramètres
-    resid = model.resid
+    resid = model.std_resid
     resid = resid.replace([np.inf, -np.inf], np.nan).dropna()
+
     params = pd.DataFrame(model.params)
     params = params[params.index.str.contains('alpha|beta')]
     sum_params = float(np.sum(params, axis=0).iloc[0])
@@ -399,44 +400,60 @@ def model_validation(model):
     results['Hypothèse'].append('Normalité des résidus')
     results['Respect'].append(1 if p_shapiro >= 0.05 else 0)
     results['P-Value'].append(p_shapiro)
+
+    # 2. Distribution des résidus
+    distribution = model.model.distribution
+
+    # Paramètres propres à la distribution
+    distribution_param_names = distribution.parameter_names()
+
+    if len(distribution_param_names) > 0:
+        distribution_params = [model.params[name] for name in distribution_param_names]
+    else:
+        distribution_params = None
     
-    # 2. Autocorrélation des résidus (p-value >= 0.05 pour toutes les lags)
+    # Transformation PIT
+    pit = distribution.cdf(resid, parameters=distribution_params)
+
+    # Test KS pour tester U(0,1)
+    _, p_distribution = kstest(pit, 'uniform')
+
+    results['Hypothèse'].append('Distribution des résidus')
+    results['Respect'].append(1 if p_distribution >= 0.05 else 0)
+    results['P-Value'].append(p_distribution)
+
+    # 2. Autocorrélation des résidus
     lb_resid = acorr_ljungbox(resid, lags=[i for i in range(1, 13)], return_df=True)
     autocorr_resid_pvalues = lb_resid['lb_pvalue']
     results['Hypothèse'].append('Autocorrélation des résidus')
     results['Respect'].append(1 if all(p >= 0.05 for p in autocorr_resid_pvalues) else 0)
     results['P-Value'].append(autocorr_resid_pvalues.tolist())
 
-    # Lags AR suggérés en cas d'autocorrélation détectée
-    # On prend tous les lags où le test Ljung-Box est significatif
-    # (p < 0.05), jusqu'au dernier lag concerné
-    significant_lags = [
-        lag for lag, p in zip(range(1, 13), autocorr_resid_pvalues)
-        if p < 0.05
-    ]
-    suggested_ar_lags = significant_lags if significant_lags else [1]
-    
-    # 3. Autocorrélation des résidus au carré (p-value >= 0.05 pour toutes les lags)
+    # 3. Autocorrélation des résidus au carré
     lb_resid_sq = acorr_ljungbox(resid**2, lags=[i for i in range(1, 13)], return_df=True)
     autocorr_resid_sq_pvalues = lb_resid_sq['lb_pvalue']
     results['Hypothèse'].append('Autocorrélation des résidus au carré')
     results['Respect'].append(1 if all(p >= 0.05 for p in autocorr_resid_sq_pvalues) else 0)
     results['P-Value'].append(autocorr_resid_sq_pvalues.tolist())
-    
-    # 4. Hétéroscédasticité conditionnelle (effet ARCH), p-value >= 0.05
+
+    # 4. Hétéroscédasticité conditionnelle résiduelle (effet ARCH)
     lm_test = het_arch(resid)
     results['Hypothèse'].append('Effet ARCH')
     results['Respect'].append(1 if lm_test[1] >= 0.05 else 0)
     results['P-Value'].append(lm_test[1])
-    
+
     # 5. Stationnarité conditionnelle
     persistence = np.round(sum_params, 4)
     results['Hypothèse'].append('Stationnarité conditionnelle')
     results['Respect'].append(1 if persistence < 1 else 0)
-    results['P-Value'].append(persistence)
-    
+    results['P-Value'].append(None)
+
     # Création d'une DataFrame avec les résultats
     df_results = pd.DataFrame(results)
+
+    # Lags AR suggérés en cas d'autocorrélation détectée
+    significant_lags = [lag for lag, p in zip(range(1, 13), autocorr_resid_pvalues) if p < 0.05]
+    suggested_ar_lags = significant_lags if significant_lags else [1]
     df_results.attrs['suggested_ar_lags'] = suggested_ar_lags
 
     return df_results
@@ -493,9 +510,41 @@ def forecast_volatility(i, real_values, test_size, vol, p, q, mean, dist, lag):
     """
     current_train = real_values[:-(test_size - i)]
     model = arch_model(current_train, vol=vol, p=p, q=q, mean=mean, dist=dist, lags=lag)
-    model_fit = model.fit(disp='off', options={'maxiter': 2000})
+    model_fit = model.fit(disp='off', options={'maxiter': 5000})
     pred = model_fit.forecast(horizon=1)
     return np.sqrt(pred.variance.values[-1, :][0])
+
+def evaluate_volatility_forecast(predicted_var, realized_returns):
+    """
+    Évalue la qualité des prévisions de variance conditionnelle d'un modèle GARCH
+    via la fonction de perte QLIKE.
+
+    QLIKE est préférée à RMSE/MAE dans ce contexte car elle reste une métrique de
+    comparaison valide même lorsque la volatilité réalisée est approximée par un
+    proxy bruité (ici, r_t^2), contrairement à RMSE/MAE qui peuvent inverser le
+    classement entre modèles dans ce cas (Patton, 2011).
+
+    Une valeur de QLIKE plus faible indique un meilleur modèle. Cette métrique n'a
+    pas d'échelle absolue interprétable seule : elle sert à comparer plusieurs
+    modèles entre eux sur les mêmes données, pas à juger un modèle isolément.
+
+    Args:
+        predicted_var (array-like): Variances conditionnelles prédites.
+        realized_returns (array-like): Rendements réels sur la même période, utilisés
+            pour construire le proxy de volatilité réalisée (r_t^2).
+
+    Returns:
+        float: Valeur de QLIKE (plus bas = meilleur modèle).
+    """
+    realized_var = np.asarray(realized_returns) ** 2
+    predicted_var = np.asarray(predicted_var)
+
+    # Sécurité : éviter log(0) ou division par 0 si predicted_var contient des zéros
+    predicted_var = np.where(predicted_var <= 0, np.nan, predicted_var)
+
+    qlike = np.nanmean(np.log(predicted_var) + realized_var / predicted_var)
+
+    return float(qlike)
 
 def rolling_pred(real_values, test_size, vol, p, q, mean, dist, lag, col):
     """
@@ -512,12 +561,11 @@ def rolling_pred(real_values, test_size, vol, p, q, mean, dist, lag, col):
         dist (str): Distribution à utiliser pour les résidus ('normal', 't', 'skewt', etc.).
         lag (int): Nombre de décalages (lags) à utiliser pour le modèle, nécessaire si le modèle de moyenne est 'AR' ou 'HAR'.
         col (str): Nom de la colonne associée à la série temporelle.
-    
+
     Displays:
         Un graphique des valeurs réelles de la série et des prévisions glissantes.
     """
-    rolling_predictions = []
-    rolling_predictions = Parallel(n_jobs=3, verbose=0)(  # Prédictions parallèles
+    rolling_predictions = Parallel(n_jobs=3, verbose=0)(
         delayed(forecast_volatility)(i, real_values, test_size, vol, p, q, mean, dist, lag) for i in range(test_size)
     )
 
@@ -581,7 +629,7 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
     """
     # Modélisation ARCH/GARCH
     model = arch_model(data, vol=vol, p=p, q=q, mean=mean, dist=dist, lags=lag)
-    model_fit = model.fit(disp='off', options={'maxiter': 2000})
+    model_fit = model.fit(disp='off', options={'maxiter': 5000})
 
     # Prévisions de la volatilité pour l'horizon donné
     pred = model_fit.forecast(horizon=horizon)
@@ -793,9 +841,9 @@ elif option == "Prédiction" and len(selected_companies) >=1:
     start_date = end_date - pd.Timedelta(days=365 + 31 * 6)
     
     # Choisir de visualiser les performances sur la base de test
-    visu_perf = st.sidebar.toggle("Visualisation des performances de chaque modèle par rapport aux données rélles")
+    visu_perf = st.sidebar.toggle("Visualisation des performances pour chaque entreprise")
     if visu_perf:
-        st.sidebar.warning("Attention : l'évaluation de chaque modèle peut prendre du temps")
+        st.sidebar.warning("Attention : l'évaluation prendra du temps")
     
     # Choisir l'intervalle de confiance des prédictions
     conf_int = st.sidebar.slider("Choisissez le degré de certitude des prédictions (en %).", min_value=80, max_value=99, value=95)
@@ -1371,7 +1419,7 @@ elif (
                     mean=final_mean, dist=final_dist,
                     col=col, lag=final_lag
                 )
-
+                
             # ========================================================
             # 6. PRÉDICTIONS FINALES
             # ========================================================
@@ -1399,11 +1447,7 @@ elif (
                 "Ordre q": q,
                 "Moyenne": final_mean,
                 "Distribution d'erreur": final_dist,
-                "Retard": (
-                    str(final_lag)
-                    if final_lag is not None
-                    else "Aucun"
-                )
+                "Retard": str(final_lag) if final_lag is not None else "Aucun"
             })
 
             # ========================================================
@@ -1412,7 +1456,7 @@ elif (
             
             model_val.append({
                 "Entreprise": col,
-                "Normalité des résidus": hypothesis_status(df_val_final, "Normalité des résidus"),
+                "Distribution des résidus": hypothesis_status(df_val_final, "Distribution des résidus"),
                 "Indépendance des résidus": hypothesis_status(df_val_final, "Autocorrélation des résidus"),
                 "Indépendance des résidus au carré": hypothesis_status(df_val_final, "Autocorrélation des résidus au carré"),
                 "Homoscédasticité conditionnelle": hypothesis_status(df_val_final, "Effet ARCH"),
@@ -1458,6 +1502,4 @@ elif (
 
         progress_bar.empty()
         status_text.empty()
-    
-else:
-    st.write('Saisissez les options afin de débuter les analyses puis appuyer sur "Lancer"')
+
