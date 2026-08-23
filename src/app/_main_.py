@@ -841,9 +841,7 @@ elif option == "Prédiction" and len(selected_companies) >=1:
     start_date = end_date - pd.Timedelta(days=365 + 31 * 6)
     
     # Choisir de visualiser les performances sur la base de test
-    visu_perf = st.sidebar.toggle("Visualisation des performances pour chaque entreprise")
-    if visu_perf:
-        st.sidebar.warning("Attention : l'évaluation prendra du temps")
+    visu_perf = st.sidebar.toggle("Visualisation des performances pour chaque entreprise", help="Cette option permet de visualiser les performances du modèle. Cela peut prendre du temps, surtout si vous avez sélectionné plusieurs entreprises.")
     
     # Choisir l'intervalle de confiance des prédictions
     conf_int = st.sidebar.slider("Choisissez le degré de certitude des prédictions (en %).", min_value=80, max_value=99, value=95)
@@ -1490,10 +1488,14 @@ elif (
 
         st.markdown("<hr>", unsafe_allow_html=True)
         
-        st.write("Veuillez trouver ci-dessous les modèles de volatilité (GARCH) utilisés pour les prédictions de chaque entreprise.")
+        st.subheader("Modèles de volatilité retenus")
+        st.caption("Ils servent à anticiper les variations des prix")
         st.dataframe(model_summary_df)
 
-        st.write("Veuillez trouver ci-dessous le résumé du respect des hypothèses statistiques associées à chaque modèle final.")
+        st.subheader("Fiabilité des modèles")
+        st.caption(
+            "Ces contrôles permettent de vérifier que les modèles sont scientifiquement valides et cohérents pour être utilisés pour faire des prévisions fiables."
+                   )
         st.dataframe(model_val_df)
 
         # ============================================================
