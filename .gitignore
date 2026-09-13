@@ -28,7 +28,8 @@ Desktop.ini
 # Environnement / secrets
 # =========================================================
 
-.env
+*env/
+*_env/
 .env.*
 !.env.example
 finance_env

@@ -1005,16 +1005,16 @@ if option == "Analyse" and len(selected_companies) >= 1 and start_date and end_d
         std_list.append(std)
 
     # Créer la DataFrame des performances et des risques
-        tickers = df_returns['Ticker'].unique()
-        mean_list = []
-        downside_list = []
-        upside_list = []
+    tickers = df_returns['Ticker'].unique()
+    mean_list = []
+    downside_list = []
+    upside_list = []
 
-        for ticker in tickers:
-            returns = df_returns[df_returns['Ticker'] == ticker]['Returns']
-            mean_list.append(returns.mean())
-            downside_list.append(downside_deviation(returns))
-            upside_list.append(upside_deviation(returns))
+    for ticker in tickers:
+        returns = df_returns[df_returns['Ticker'] == ticker]['Returns']
+        mean_list.append(returns.mean())
+        downside_list.append(downside_deviation(returns))
+        upside_list.append(upside_deviation(returns))
     
     df_perf = pd.DataFrame({
         "Ticker": df['Ticker'].unique(),
@@ -1035,8 +1035,7 @@ if option == "Analyse" and len(selected_companies) >= 1 and start_date and end_d
         var_name="Mesure",
         value_name="Valeur"
     )
-    
-    
+
     df_perf_melted["Mesure"] = df_perf_melted["Mesure"].replace({
         "Moyenne": "Rendements",
         "Ecart-type": "Volatilité",
