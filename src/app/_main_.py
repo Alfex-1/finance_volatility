@@ -288,7 +288,7 @@ def fit_garch_model(data, p, q, o, lags, mean, dist, vol):
             model = arch_model(data.dropna(), mean=mean, dist=dist, vol=vol, p=p, q=q, o=o)
         
         # Ajuster le modèle
-        model_fit = model.fit(disp='off', options={'maxiter': 5000})
+        model_fit = model.fit(disp='off', options={'maxiter': 5000}, method='bfgs')
         params = model_fit.params
         alpha_beta = params[params.index.str.contains('alpha|beta')]
         sum_params = np.round(float(alpha_beta.sum()), 4)
@@ -510,7 +510,7 @@ def forecast_volatility(i, real_values, test_size, vol, p, q, mean, dist, lag):
     """
     current_train = real_values[:-(test_size - i)]
     model = arch_model(current_train, vol=vol, p=p, q=q, mean=mean, dist=dist, lags=lag)
-    model_fit = model.fit(disp='off', options={'maxiter': 5000})
+    model_fit = model.fit(disp='off', options={'maxiter': 5000}, method='bfgs')
     pred = model_fit.forecast(horizon=1)
     return np.sqrt(pred.variance.values[-1, :][0])
 
@@ -629,7 +629,7 @@ def forecasting_volatility(data, model, vol, p, q, mean, dist, lag, col, horizon
     """
     # Modélisation ARCH/GARCH
     model = arch_model(data, vol=vol, p=p, q=q, mean=mean, dist=dist, lags=lag)
-    model_fit = model.fit(disp='off', options={'maxiter': 5000})
+    model_fit = model.fit(disp='off', options={'maxiter': 5000}, method='bfgs')
 
     # Prévisions de la volatilité pour l'horizon donné
     pred = model_fit.forecast(horizon=horizon)
